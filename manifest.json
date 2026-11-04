@@ -1,0 +1,10 @@
+{
+  "display_name": "Venice Image Bridge",
+  "loading_order": 50,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "author": "joetharp1",
+  "version": "0.1.0",
+  "homePage": "https://github.com/joetharp1/st-venice-vision-bridge"
+}
