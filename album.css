@@ -1,3 +1,13 @@
+/* Keep dynamically growing bridge content in the extension list's normal flow.
+   A height left by the host drawer animation must not cap the live album. */
+#venice_bridge_settings { display: block; flex: 0 0 auto; min-width: 0; }
+#venice_bridge_settings > .inline-drawer { height: auto; min-width: 0; }
+#venice_bridge_settings > .inline-drawer > .inline-drawer-content {
+    height: auto !important;
+    max-height: none;
+    overflow: visible;
+}
+
 #venice_album { min-width: 0; }
 #venice_album label:not(.checkbox_label) { display: block; margin-top: 12px; }
 #venice_album input[type=file] { display: block; box-sizing: border-box; width: 100%; max-width: 100%; margin: 8px 0; }

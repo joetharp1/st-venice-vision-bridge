@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.4.1 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.4.2 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -24,7 +24,7 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.4.1**. Avoid keeping another old SillyTavern tab open while changing settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.4.2**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
@@ -43,6 +43,10 @@ The old **Venice Image Generation** dropdown, `/vimg`, and its message buttons k
 The ordinary image catalogue offers text-to-image models. Reference portraits have a separate editing-model catalogue below. Upscale, video and background-removal operations are outside this update. `bria-bg-remover` is excluded even though Venice lists it under image. Offline models are labelled; a missing/offline selected model fails explicitly rather than silently spending on a replacement.
 
 The last catalogue and selection are cached with extension settings, without copying the API key. A failed refresh retains them. Old API keys restricted to private models may reject anonymized models with HTTP 403; selecting a model does not change those restrictions. Generation failures are never retried automatically. Prompts retain the bridge's existing 1500-character limit.
+
+## Growing album layout (0.4.2)
+
+The bridge now occupies a non-shrinking block in the extension list, with automatic content height even if the host drawer animation leaves a fixed height. Dynamic albums remain above the following extension panels; collapsing still hides the content. A browser regression checks 0, 3 and 12 cards, stale inline height, collapse/reopen and four viewport widths. Run `CHROMIUM_EXECUTABLE=/path/to/chromium node tests/browser/drawer-layout.cjs`.
 
 ## Mobile layout fix (0.4.1)
 

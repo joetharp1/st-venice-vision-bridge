@@ -95,7 +95,7 @@ jQuery(() => {
             <div id="venice_bridge_refresh" class="menu_button">Refresh status</div>
             <p id="venice_bridge_status"></p>
             <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div>
-            <small>Version 0.4.1 · Built for SillyTavern 1.19.0</small>
+            <small>Version 0.4.2 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -125,5 +125,5 @@ jQuery(() => {
     album = mountAlbum({ onReference: portraits.useAlbumPortrait, getContext, getSettings: settings, extension_settings, eventSource, event_types,
         saveSettings, saveSettingsDebounced, getRequestHeaders, getMessageTimeStamp, MEDIA_TYPE, MEDIA_SOURCE, MEDIA_DISPLAY });
     refresh();
-    console.info('[Venice Image Bridge] 0.4.1 loaded');
+    console.info('[Venice Image Bridge] 0.4.2 loaded');
 });
