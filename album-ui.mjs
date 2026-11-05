@@ -135,6 +135,10 @@ export function mountAlbum(host) {
             const date = document.createElement('small'); date.textContent = `${item.album === 'shared' ? 'Shared' : 'Character'} · ${item.saved_at.slice(0, 10)}${item.archived ? ' · Archived' : ''}`; card.append(date);
             const actions = document.createElement('div'); actions.className = 'vab_actions';
             if (!item.archived) actions.append(button('Open in chat', async () => { if (characterKey(getContext()) !== key) throw new Error('Character changed; refresh the album.'); await album.open(item.id); notify('Picture opened in this chat. Ask about it in your next message.'); }));
+            if (!item.archived && host.onReference) actions.append(button('Use as reference portrait', async () => {
+                if (characterKey(getContext()) !== key) throw new Error('Character changed; refresh the album.');
+                await host.onReference(record.url, item.title, key);
+            }));
             actions.append(button('Edit name / notes', async () => {
                 const titleInput = document.createElement('input'); titleInput.className = 'text_pole'; titleInput.maxLength = 120; titleInput.value = item.title; titleInput.setAttribute('aria-label', 'Edit picture name');
                 const notesInput = document.createElement('textarea'); notesInput.className = 'text_pole'; notesInput.maxLength = 1200; notesInput.value = item.notes; notesInput.setAttribute('aria-label', 'Edit picture notes');
@@ -225,5 +229,5 @@ export function mountAlbum(host) {
     eventSource.on(event_types.GENERATION_STOPPED, () => album.cancel());
     eventSource.on(event_types.MESSAGE_RECEIVED, () => { if (!uiBusy) refresh(); });
     refresh();
-    return album;
+    return Object.assign(album, { refreshUI: refresh });
 }

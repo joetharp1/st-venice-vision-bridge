@@ -8,3 +8,8 @@
 #venice_album .vab_card p { white-space: pre-wrap; }
 #venice_album .vab_error { color: #ff9292; }
 #venice_album.vab_busy button, #venice_album.vab_busy input, #venice_album.vab_busy select { pointer-events: none; opacity: .65; }
+
+#venice_bridge_portraits { min-width: 0; overflow-wrap: anywhere; }
+#venice_bridge_portraits label { display: block; margin-top: 10px; }
+#venice_bridge_portraits .menu_button { display: inline-block; white-space: normal; max-width: 100%; min-height: 38px; padding: 8px 12px; }
+#venice_bridge_portraits input[type=file], #venice_bridge_portraits select { max-width: 100%; width: 100%; }
