@@ -2,7 +2,10 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
 const {chromium}=require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES ? path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES,'playwright') : 'playwright');
 const root=path.resolve(__dirname,'../..');
 const catalogue={data:[{type:'inpaint',id:'ref',model_spec:{name:'Reference model',constraints:{aspectRatios:['1:1','2:3']},pricing:{inpaint:{usd:0.03}}}},{type:'inpaint',id:'tier',model_spec:{name:'Tiered reference',constraints:{aspectRatios:['1:1'],resolutions:['1K','2K'],qualities:['low','high'],defaultQuality:'low',defaultResolution:'1K'},pricing:{quality:{'1K':{low:{usd:0.04},high:{usd:0.10}}},inputImages:{included:0,additional:{usd:0.01}}}}}]};
-const html=`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:16px;background:#202020;color:#eee;font:17px system-ui}label{display:block;margin:10px 0}select,input,textarea,button{box-sizing:border-box;width:100%;padding:10px;color:#eee;background:#303030;border:1px solid #666;border-radius:5px;font:inherit}small{font-size:13px}p{line-height:1.4}details{margin:20px 0}button{cursor:pointer}</style><div id="venice_bridge_portraits"></div><script type="module">
+// Host rules from SillyTavern 1.19.0 public/style.css; keep these in the fixture.
+const hostCss='.menu_button{width:min-content;display:flex;align-items:center;justify-content:center;text-align:center;margin:5px 0}input[type="file"]{display:none}';
+const extensionCss=fs.readFileSync(path.join(root,'album.css'),'utf8');
+const html=`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:16px;background:#202020;color:#eee;font:17px system-ui}label{display:block;margin:10px 0}select,input,textarea,button{box-sizing:border-box;width:100%;padding:10px;color:#eee;background:#303030;border:1px solid #666;border-radius:5px;font:inherit}small{font-size:13px}p{line-height:1.4}details{margin:20px 0}button{cursor:pointer}</style><style>${hostCss}</style><style>${extensionCss}</style><div id="venice_bridge_portraits"></div><script type="module">
 import {mountPortraits} from '/portraits-ui.mjs';import {createBridge} from '/runtime.mjs';import {loadPortrait} from '/portraits.mjs';
 const legacy={api_key:'FAKE-ONLY',model:'chroma',width:832,height:1216,safe_mode:true};
 const own=JSON.parse(localStorage.getItem('own')||'null')||{enabled:true,characters:{'A.png':true,'B.png':true}};
@@ -24,6 +27,17 @@ const page=await browser.newPage({viewport:{width:393,height:852}});const errors
 await page.route('https://api.venice.ai/api/v1/models?type=inpaint',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(catalogue)}));
 await page.route('**/user/{images,files}/**',async route=>{const data=await page.evaluate(url=>files[new URL(url).pathname]||fixture,route.request().url());await route.fulfill({contentType:'image/png',body:Buffer.from(data.split(',')[1],'base64')});});
 await page.goto('http://127.0.0.1:'+server.address().port);await page.waitForFunction(()=>window.ui);
+// Real host CSS must not hide the chooser or collapse buttons into letter columns.
+for(const width of [320,393,709]){
+await page.setViewportSize({width,height:852});
+assert.equal(await page.locator('[data-ref=file]').isVisible(),true,'File chooser must be visible');
+for(const name of ['upload','clear','refresh']){
+const box=await page.locator('[data-ref='+name+']').boundingBox();
+assert.ok(box.width>=200 && box.height<=100,'Readable button at '+width+'px: '+name+' '+JSON.stringify(box));
+}
+assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+}
+await page.setViewportSize({width:393,height:852});
 await page.click('[data-ref=refresh]');await page.waitForFunction(()=>document.querySelector('[data-ref=status]').textContent.includes('2 reference'));
 const fixture=Buffer.from((await page.evaluate(()=>fixture)).split(',')[1],'base64');
 await page.setInputFiles('[data-ref=file]',{name:'original-a.png',mimeType:'image/png',buffer:fixture});await page.click('[data-ref=upload]');await page.waitForFunction(()=>own.portraits?.['A.png']?.url && !document.querySelector('[data-ref=model]').disabled);

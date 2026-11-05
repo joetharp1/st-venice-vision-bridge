@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.4.0 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.4.1 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -24,7 +24,7 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.4.0**. Avoid keeping another old SillyTavern tab open while changing settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.4.1**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
@@ -43,6 +43,10 @@ The old **Venice Image Generation** dropdown, `/vimg`, and its message buttons k
 The ordinary image catalogue offers text-to-image models. Reference portraits have a separate editing-model catalogue below. Upscale, video and background-removal operations are outside this update. `bria-bg-remover` is excluded even though Venice lists it under image. Offline models are labelled; a missing/offline selected model fails explicitly rather than silently spending on a replacement.
 
 The last catalogue and selection are cached with extension settings, without copying the API key. A failed refresh retains them. Old API keys restricted to private models may reject anonymized models with HTTP 403; selecting a model does not change those restrictions. Generation failures are never retried automatically. Prompts retain the bridge's existing 1500-character limit.
+
+## Mobile layout fix (0.4.1)
+
+Restores visible file choosers and full-width portrait buttons under SillyTavern’s own CSS. The browser regression test includes the host’s hidden-file-input and minimum-content button rules, and checks readable controls at 320, 393 and 709 pixels. The same file-input fix also applies to album uploads.
 
 ## Fixed reference portraits (0.4.0)
 
