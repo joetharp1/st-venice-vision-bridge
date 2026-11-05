@@ -2,9 +2,10 @@
 export const MODELS_URL = 'https://api.venice.ai/api/v1/models?type=image';
 const strings = value => Array.isArray(value) ? [...new Set(value.filter(v => typeof v === 'string' && v.length < 100))] : [];
 
-export function parseModels(data) {
+export function parseModels(data, type = 'image') {
+    if (!['image', 'inpaint'].includes(type)) throw new Error('Unsupported model catalogue type.');
     if (!Array.isArray(data?.data)) throw new Error('Venice returned an invalid model catalogue. Your saved selection is unchanged.');
-    const models = data.data.filter(m => m?.type === 'image' && typeof m.id === 'string'
+    const models = data.data.filter(m => m?.type === type && typeof m.id === 'string'
         && m.id.length < 200 && m.id !== 'bria-bg-remover').map(m => {
         const s = m.model_spec || {}, c = s.constraints || {};
         return { id: m.id, name: typeof s.name === 'string' ? s.name : m.id,
@@ -14,19 +15,20 @@ export function parseModels(data) {
                 widthHeightDivisor: Number(c.widthHeightDivisor) || 8, promptCharacterLimit: Number(c.promptCharacterLimit) || 1500 },
             pricing: s.pricing || {} };
     });
-    if (!models.length) throw new Error('Venice returned no text-to-image models. Your saved selection is unchanged.');
+    if (!models.length) throw new Error(`Venice returned no ${type === 'image' ? 'text-to-image' : 'editing'} models. Your saved selection is unchanged.`);
     return [...new Map(models.map(m => [m.id, m])).values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function fetchModels(request, key) {
+export async function fetchModels(request, key, type = 'image') {
+    if (!['image', 'inpaint'].includes(type)) throw new Error('Unsupported model catalogue type.');
     if (!key) throw new Error('Add your API key in Venice Image Generation first.');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
     try {
-        const response = await request(MODELS_URL, { method: 'GET', cache: 'no-store',
+        const response = await request(type === 'image' ? MODELS_URL : 'https://api.venice.ai/api/v1/models?type=inpaint', { method: 'GET', cache: 'no-store',
             headers: { Authorization: `Bearer ${key}` }, signal: controller.signal });
         if (!response.ok) throw new Error(`Could not load Venice models (HTTP ${response.status}). Your saved selection is unchanged.`);
-        return parseModels(await response.json());
+        return parseModels(await response.json(), type);
     } catch (e) {
         if (e.name === 'AbortError') throw new Error('Loading Venice models timed out. Your saved selection is unchanged.');
         throw e;

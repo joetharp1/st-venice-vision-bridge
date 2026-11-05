@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.3.0 — Live image model catalogue and picture albums
+# Venice Image Bridge 0.4.0 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -7,6 +7,7 @@ A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom Open
 - Keeps assistant pictures visible under their original author, while moving their outgoing `image_url` inputs into labelled user-role messages accepted by Venice. Stored chat authors remain unchanged.
 - Offers the optional `VeniceCreateImage` tool using the existing [Venice image generator](https://github.com/AnonCollab/st-venice-image) key and filters. One generation attempt per user turn; no automatic retry.
 - Loads Venice's current text-to-image catalogue and offers model-specific aspect ratio, resolution and quality options, or pixel dimensions. Displays supplied generation pricing and privacy tier. The selected model is shared across characters.
+- Adds a fixed original reference portrait and separate editing-model selection per character, with the optional `VeniceCreateSelfPortrait` tool and a manual portrait test.
 - Adds a manual Generate button using the same model and request builder as the companion tool.
 - Adds **character albums that follow the same character across chats**, plus an explicitly selected shared album.
 - Lets you upload a picture or save an independent copy of an image already in the current chat, with a name and optional searchable notes.
@@ -23,7 +24,7 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.3.0**. Avoid keeping another old SillyTavern tab open while changing settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.4.0**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
@@ -39,9 +40,31 @@ No terminal commands, new server plugin, new credentials or core edits are neede
 
 The old **Venice Image Generation** dropdown, `/vimg`, and its message buttons keep their original settings and static choices. Use the bridge's new picker and manual button for the expanded catalogue. No duplicate extension installation is needed.
 
-Only text-to-image models are offered: edit, upscale, video and background-removal operations require different inputs/endpoints and are outside this update. `bria-bg-remover` is excluded even though Venice lists it under image. Offline models are labelled; a missing/offline selected model fails explicitly rather than silently spending on a replacement.
+The ordinary image catalogue offers text-to-image models. Reference portraits have a separate editing-model catalogue below. Upscale, video and background-removal operations are outside this update. `bria-bg-remover` is excluded even though Venice lists it under image. Offline models are labelled; a missing/offline selected model fails explicitly rather than silently spending on a replacement.
 
 The last catalogue and selection are cached with extension settings, without copying the API key. A failed refresh retains them. Old API keys restricted to private models may reject anonymized models with HTTP 403; selecting a model does not change those restrictions. Generation failures are never retried automatically. Prompts retain the bridge's existing 1500-character limit.
+
+## Fixed reference portraits (0.4.0)
+
+1. Open the intended one-to-one character chat with its bridge image-generation permission enabled.
+2. Under **My reference portrait**, choose a PNG/JPEG/WebP from your device and tap **Save reference portrait**. Alternatively, use **Use as reference portrait** on a picture in the album below. This saves a separate, private album copy and verifies persistence before pinning it. Original files are retained.
+3. Tap **Load reference image models**. This queries Venice's `GET /models?type=inpaint` catalogue without generating an image. Choose a model, shape and any supported resolution/quality. Prices include the single input-image surcharge when reported. Models and options are saved separately for each character. Existing choices are preserved on refresh; no model is silently substituted.
+4. Ask the companion: **Use your self-portrait tool to make a picture of yourself in a new setting, keeping your reference face.** Expect **Create a self-portrait** (`VeniceCreateSelfPortrait`), then a new image in the chat. The original portrait is attached automatically; the model supplies only the scene description. A manual test button is also available.
+5. Repeat setup for another character. Switch between them and verify each preview is the correct original. A different/reimported avatar filename starts a different reference configuration.
+
+The reference is loaded afresh from local ST storage and sent as image bytes with the new prompt. The original is never replaced by a generated result. The editing model can still vary facial details; visual likeness must be checked on live outputs. Neither a prompt nor a reference guarantees an identical face.
+
+The existing `VeniceCreateImage` tool is for other subjects and text-only generation; its description directs self-pictures to the new tool when available. `/vimg` remains the original text-only command. No character notes/card edits are required to expose the new tool; the conversational model decides whether to call it.
+
+**API behaviour:** single-image `/image/edit` is used normally; models advertising quality choices use `/image/multi-edit` with exactly one reference so the selected quality is honoured. Only documented request fields are sent, with PNG output requested and actual returned PNG/JPEG/WebP format preserved. Safe Mode follows the existing generator setting. Provider content policies and account restrictions still apply. Editing does not accept the generator's separate negative-prompt field: put relevant exclusions in the scene prompt. Prompt enhancement is not enabled.
+
+Both generation tools share one attempted image per user turn, the same busy guard and timeout. Missing/unreadable references, changed chats before upload and invalid model selections stop before a paid request. Provider failures are not retried or silently routed to another model. If the chat changes after a request was sent, its result is saved to the original gallery and never posted to a different character. Manual tests are explicit paid button presses, with the shared concurrency guard.
+
+**Storage:** each reference is copied into the character's existing private album as a disabled attachment, with a settings pointer keyed by avatar filename. Leave these storage attachments disabled and keep the files. Album backups include the image bytes; after importing an album backup, choose the restored portrait as reference again. Server user-data backups also include the reference/model settings. **Stop using this reference** detaches the pointer and stops offering the self-portrait tool; it does not delete any file. Replacements retain the older copies in the album.
+
+Version 0.4.0 passed **46 automated tests**, including per-character reference isolation, strict edit request schemas, single/multi-edit routing, shared attempt limits, failed requests, cancellation, binary formats and input-image pricing. A 393px mobile browser harness checked upload, model/options, independent references, persistence across reloads, failed-save rollback, album-copy selection, switching characters mid-load, detach and layout. Tests used synthetic images/catalogue responses and made no paid Venice requests. Live account access and visual likeness still need a first generation after installation.
+
+Optional browser harness (Playwright and Chromium required): `CHROMIUM_EXECUTABLE=/path/to/chromium node tests/browser/portraits.cjs`. It tests the real portrait UI/runtime with simulated provider/storage responses; it is not a full live ST deployment test.
 
 ## First album test
 
@@ -109,7 +132,7 @@ Turn off the character’s **find and open saved pictures** checkbox to stop off
 
 Disabling the entire extension also disables the image-role fix; assistant images may then trigger Venice's original 400 error. Existing saved pictures/chats are not deleted by disabling the extension.
 
-For a server operator, the optional installer copies all ten runtime files and backs up a prior bridge installation:
+For a server operator, the optional installer copies all twelve runtime files and backs up a prior bridge installation:
 
 ```sh
 node install.mjs --app-root /actual/path/to/SillyTavern --dry-run
@@ -123,6 +146,8 @@ It requires exactly ST 1.19.0, does not find Docker containers, and does not cha
 - Original generator: https://github.com/AnonCollab/st-venice-image/blob/9f04082c92c62af284c7752811fc3c00f66a9921/index.js
 - Venice model catalogue: https://docs.venice.ai/api-reference/endpoint/models/list
 - Venice model-specific sizing and request fields: https://docs.venice.ai/api-reference/endpoint/image/generate
+- Venice editing API: https://docs.venice.ai/api-reference/endpoint/image/edit
+- Venice multi-image editing API: https://docs.venice.ai/api-reference/endpoint/image/multi-edit
 - Venice maintained image-generation reference: https://github.com/veniceai/skills/blob/main/skills/venice-image-generate/SKILL.md
 - ST 1.19.0: `public/script.js`, `public/scripts/openai.js`, `public/scripts/st-context.js`, `public/scripts/tool-calling.js`, `public/scripts/chats.js`, `public/scripts/utils.js`, `src/endpoints/files.js`, `src/endpoints/settings.js`, `src/endpoints/data-maid.js`.
 

@@ -7,6 +7,8 @@ import { characterKey, isVeniceConnection } from './core.mjs';
 import { createBridge } from './runtime.mjs';
 import { mountAlbum } from './album-ui.mjs';
 import { mountModels } from './models-ui.mjs';
+import { mountPortraits } from './portraits-ui.mjs';
+import { loadPortrait } from './portraits.mjs';
 
 const NAME = 'st-venice-vision-bridge';
 function settings() {
@@ -16,13 +18,25 @@ function settings() {
     return s;
 }
 
+const saveImage = (base64, name, extension = 'png') => saveBase64AsFile(base64, name || 'Character', `venice_bridge_${crypto.randomUUID()}`, extension);
+const loadReference = (url, signal) => loadPortrait(url, location.origin, (...args) => fetch(...args), signal);
+async function persistPortraitSettings() {
+    const revision = crypto.randomUUID(); settings().portraitRevision = revision;
+    await saveSettings();
+    const response = await fetch('/api/settings/get', { method: 'POST', headers: getRequestHeaders(), body: '{}', signal: AbortSignal.timeout(25000) });
+    if (!response.ok) throw new Error('Could not confirm reference settings on the server. Try again.');
+    const data = await response.json();
+    if (JSON.parse(data.settings).extension_settings?.[NAME]?.portraitRevision !== revision) {
+        throw new Error('The server has not confirmed reference settings. Wait for any reply to finish and try again.');
+    }
+}
 let lastMoved = 0;
 const bridge = createBridge({
     getContext, getSettings: settings,
     getGeneratorSettings: () => extension_settings['st-venice-image'],
     fetch: (...args) => fetch(...args),
-    saveImage: (base64, name) => saveBase64AsFile(base64, name || 'Character', `venice_bridge_${crypto.randomUUID()}`, 'png'),
-    publishImage: async ({ url, prompt, context, isCurrent, manual }) => {
+    saveImage, loadReference,
+    publishImage: async ({ url, prompt, context, isCurrent, manual, portrait }) => {
         const message = {
             name: context.name2, is_user: false, is_system: false,
             send_date: getMessageTimeStamp(),
@@ -30,7 +44,7 @@ const bridge = createBridge({
             extra: {
                 media: [{ url, type: MEDIA_TYPE.IMAGE, title: prompt, generation_type: 'venice', source: MEDIA_SOURCE.GENERATED }],
                 media_display: MEDIA_DISPLAY.GALLERY, media_index: 0, inline_image: false,
-                venice_bridge: { version: 1, via_tool: !manual },
+                venice_bridge: { version: 1, via_tool: !manual, reference_used: !!portrait },
             },
         };
         if (!isCurrent()) throw new Error('Chat changed before the image could be posted. It is saved in the gallery.');
@@ -80,8 +94,8 @@ jQuery(() => {
             <p>Uses your existing Venice Image Generation API key. Choose from the live image catalogue below, or keep your original model setting. Each image uses Venice credits. Maximum one tool attempt per user turn. Group chats are not supported.</p>
             <div id="venice_bridge_refresh" class="menu_button">Refresh status</div>
             <p id="venice_bridge_status"></p>
-            <div id="venice_bridge_models"></div>
-            <small>Version 0.3.0 · Built for SillyTavern 1.19.0</small>
+            <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div>
+            <small>Version 0.4.0 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -96,10 +110,20 @@ jQuery(() => {
     eventSource.on(event_types.CHAT_CHANGED, refresh);
     eventSource.on(event_types.GENERATION_STOPPED, () => bridge.cancel());
     getContext().registerFunctionTool(bridge.tool());
+    getContext().registerFunctionTool(bridge.portraitTool());
     mountModels({ getSettings: settings, getGeneratorSettings: () => extension_settings['st-venice-image'],
         save: saveSettingsDebounced, request: (...args) => fetch(...args), bridge });
-    mountAlbum({ getContext, getSettings: settings, extension_settings, eventSource, event_types,
+    let album;
+    const portraits = mountPortraits({ getContext, getSettings: settings, getGeneratorSettings: () => extension_settings['st-venice-image'],
+        request: (...args) => fetch(...args), loadReference, persist: persistPortraitSettings, bridge, eventSource, event_types,
+        saveReference: async (dataUrl, title, key) => {
+            if (characterKey(getContext()) !== key) throw new Error('Character changed before saving the reference.');
+            const record = await album.save({ dataUrl, title, notes: 'Fixed reference portrait. Keep this original file.', shared: false });
+            album.refreshUI?.();
+            return record.url;
+        } });
+    album = mountAlbum({ onReference: portraits.useAlbumPortrait, getContext, getSettings: settings, extension_settings, eventSource, event_types,
         saveSettings, saveSettingsDebounced, getRequestHeaders, getMessageTimeStamp, MEDIA_TYPE, MEDIA_SOURCE, MEDIA_DISPLAY });
     refresh();
-    console.info('[Venice Image Bridge] 0.3.0 loaded');
+    console.info('[Venice Image Bridge] 0.4.0 loaded');
 });
