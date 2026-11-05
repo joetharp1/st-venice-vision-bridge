@@ -1,119 +1,108 @@
-# Venice Image Bridge 0.1.0
+# Venice Image Bridge 0.2.0 — Picture albums
 
-For SillyTavern 1.19.0 using a direct Venice Custom OpenAI-compatible connection.
+A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
-**Status: built and locally tested; not yet validated in a live SillyTavern/Venice session.**
+## What it does
 
-## What this adds
+- Keeps assistant pictures visible under their original author, while moving their outgoing `image_url` inputs into labelled user-role messages accepted by Venice. Stored chat authors remain unchanged.
+- Offers the optional `VeniceCreateImage` tool using the existing [Venice image generator](https://github.com/AnonCollab/st-venice-image) settings. One generation attempt per user turn; no automatic retry.
+- Adds **character albums that follow the same character across chats**, plus an explicitly selected shared album.
+- Lets you upload a picture or save an independent copy of an image already in the current chat, with a name and optional searchable notes.
+- Offers **VeniceFindPictures** and **VeniceOpenPicture**. Search returns catalogue text; opening attaches the actual saved image to the current chat for vision. No image-generation charge is incurred by opening an existing picture; normal chat/image-input usage still applies.
+- Includes renaming, notes, archiving, and a portable backup download/import containing only pictures and their notes.
 
-- Generated pictures remain visible as character messages in the current chat.
-- On outgoing Venice requests, assistant `image_url` parts move into a separate labelled user-role input. The character's words remain assistant-role text. Saved chat authors and original attachments are not rewritten.
-- This covers existing assistant image messages in the active request, including those made by the original `/vimg` command and its message button.
-- An optional `VeniceCreateImage` tool lets the selected character write a prompt and invoke image generation during a reply. It uses the original extension's API key, image model, dimensions, negative prompt, watermark and safe-mode settings.
-- One tool attempt per user turn, concurrency protection, no automatic retries, a timeout and stop-button cancellation.
-- Generated tool images use the same character gallery storage as the original extension. A chat change during the network request prevents posting into the wrong chat.
+No character-card, personality, memory-summary, model, sampler, web-search or API-key settings are rewritten. Album tool access starts **off** for every character, independently of the existing image-generation toggle.
 
-The original `st-venice-image` extension is required for its settings. Leave it installed. Its slash command and buttons remain available. This package has no replacement `/vimg` command.
+## Install or update on a phone
 
-## Connection scope
-
-The adapter activates only when `mainApi` is `openai`, the source is `custom`, and the configured endpoint is `https://api.venice.ai/api/v1` (optional trailing slash). It does not activate for another provider, a proxy URL or the Venice website's UI. It is not restricted to one model ID.
-
-The image tool is offered only in a one-to-one character chat explicitly enabled in this extension, with inline media and function calling enabled and the original generator key configured. Group image-tool invocation is intentionally unavailable in this release. The role adapter can still handle outgoing group assistant images.
-
-## Install from SillyTavern
-
-Install using this repository URL:
+Repository URL:
 
 ```text
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-1. In SillyTavern, open **Extensions → Install extension**.
-2. Paste this repository’s HTTPS clone URL and install for the current user.
-3. Reload SillyTavern and open **Extensions → Venice Image Bridge**.
-4. Keep the original [Venice image generator](https://github.com/AnonCollab/st-venice-image) installed and configured.
-5. Follow the activation and live acceptance steps below, using a test character first.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.2.0**. Avoid keeping another old SillyTavern tab open while changing album settings.
 
-The native installer places the extension in the user data directory; Docker deployments should persist that data directory. No terminal commands or npm installation are required for normal use. Native installation does not run the optional Node installer's exact-version check: compatibility is targeted at SillyTavern 1.19.0.
+**First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
-## Optional manual installation for the server operator
+No terminal commands, new server plugin, new credentials or core edits are needed. Back up your SillyTavern user data as usual. Native extension installs and album storage require the Docker user-data directory to be persistent.
 
-The ZIP contains `st-venice-vision-bridge/`. The four runtime files are `manifest.json`, `index.js`, `core.mjs`, and `runtime.mjs`. Install them together in:
+## First album test
 
-`<SillyTavern>/public/scripts/extensions/third-party/st-venice-vision-bridge/`
+1. Open a one-to-one test chat. Open **Extensions → Venice Image Bridge → Picture albums**.
+2. Give a picture a name such as **Original portrait**, and optional notes such as **dark hair, study, reference face**.
+3. Leave **Save into** on the character’s album. Choose a PNG, JPEG or WebP from your phone and tap **Save uploaded picture**. Alternatively select an image from the chat and tap **Save chat picture**.
+4. Wait for **Picture saved to the album**. The extension verifies the saved settings on the server before confirming success.
+5. Reload, return to that character, and confirm the album entry remains.
+6. Open a new chat with the same character. The entry should still be available. Open a different character: the private entry must not appear. Shared entries are intentionally visible to both.
+7. Turn on **Let [character] find and open saved pictures**. Keep the bridge, **inline images/media**, and **function calling** enabled on your direct Venice connection. The image-generation toggle and generator API key are not needed for album lookup/opening.
+8. Ask: **Find “Original portrait” in your picture album, open it, and describe one visible detail that isn’t in its name or notes.**
+9. Expect a **Find saved pictures** tool call, followed by **Look at a saved picture**, an image posted in the chat, and a reply. Confirm the outgoing Venice request includes a user-role image input rather than trusting a model’s statement that it can see.
+10. If the model does not call the tools, use **Open in chat** beside the album entry, then send a normal question about it. A manual open itself does not trigger a paid model reply.
 
-No npm dependencies, server plugin, new API credential, database migration, or core SillyTavern edit is required.
+Keep names descriptive. Search matches words in names and notes, not image contents or embeddings. Blank searches browse recent entries; tools can paginate. Characters can search/open albums, but this version leaves saving, sharing, renaming and archiving under your manual control.
 
-An included Node installer checks for exactly SillyTavern 1.19.0 before writing. From an extracted package outside the live extension directory:
+## Storage and backup
+
+The extension copies each saved picture to a uniquely named file in the current ST account’s `user/files/` storage using the built-in file API. The catalogue uses ST’s character/global attachment registry, tagged `venice_image_album`. These storage attachments are **disabled for text RAG**: images are sent through vision only when opened.
+
+In Data Bank you may see disabled entries named **Image Album — …**. Leave them disabled and retain them. They are storage records, not text reference documents. The registry keeps ST 1.19.0’s unused-file cleanup from treating the album files as loose files. This is why the extension does not simply leave unreferenced copies in the image gallery.
+
+- Character entries are keyed by the character’s avatar filename, matching ST’s own character attachment scope. They survive new chats and browser reloads under the same ST user account.
+- A new/reimported card with a different avatar filename does not automatically inherit the old album. Export/import the album to transfer it. Character-card export alone does not contain these files.
+- Shared entries are scoped to the ST user account, not other logged-in accounts. This is model retrieval separation, not access control against someone who can administer the same ST account.
+- Deleting the original chat does not remove the independent album copy. Archiving hides an entry from album retrieval but retains its file and registry record, preserving images already opened into chats. Archived records still count toward the storage limit. Tick **Show archived pictures too**, then **Restore** to bring one back.
+- Removing files/records manually through Data Bank, restoring older settings, deleting the ST user or losing the server data volume can remove album data. Keep server backups.
+- **Download these albums as a backup** exports the selected character’s active entries plus shared entries, including actual image data. It contains no API settings, keys, chats or character cards. Limit: 32 MB of image bytes per download.
+- **Import backup** adds copies to the album you select; it never overwrites existing entries. Importing twice makes duplicates. Limit: 48 MB JSON / 500 pictures per import. Imported copies receive the current save date; original dates remain in the backup file. Partial imports are reported if interrupted.
+- File limit: 8 MB, 24 megapixels, PNG/JPEG/WebP. Catalogue limit: 500 records per ST account including archived records. Gallery pages show 12 entries. Only selected pictures are added to model context; the whole bank is never injected.
+
+Use one active tab for album edits. Like other ST settings, simultaneous changes from different browser sessions can overwrite each other. Exporting is a backup operation, not automatic synchronisation.
+
+## Connection and tool behaviour
+
+The role adapter and album tools activate only for Custom OpenAI Chat Completions with `https://api.venice.ai/api/v1` (optional trailing slash). Other providers, proxy URLs and the Venice website are outside this release. A vision-capable model is required for inspection. Tools additionally need a selected one-to-one character with the appropriate opt-in, inline media and function calling. Group album tools are not supported.
+
+Opening a saved picture posts an assistant message labelled as a retrieved reference, using ST’s normal image attachment format. ST fetches and encodes the image; the existing bridge adapts its outgoing role. It can therefore remain in context on subsequent turns, subject to ST’s normal context and media limits. Nothing is permanently inserted into the character prompt. A search result or catalogue note alone is not evidence that the model has inspected the picture.
+
+The album tool opens at most **two different pictures per user turn**, and repeat opening of the same picture in that turn is idempotent. Chat switching and generation cancellation prevent pending opens from posting into a different conversation. Missing images produce an error instead of a success claim. The model still decides whether to use an offered tool.
+
+Image generation retains the 0.1.0 behaviour: original generator configuration, one attempt per user turn, concurrency guard, 120-second timeout, no automatic retries, and generated results posted into the current chat. Keep `st-venice-image` installed for generation. Album features do not require that generator. Original `/vimg` and message buttons continue to work.
+
+## Validation and limits
+
+Run the local unit/host tests:
+
+```sh
+npm test
+```
+
+Tests cover existing generation and adapter behaviour, persistent album metadata, private/shared scopes, cross-chat retrieval, archive retention, invalid images/URLs, failed saves, missing files, cancellation, chat switching, per-turn limits, pagination and installer upgrades. A local ST 1.19.0 browser test also passed upload, verified settings persistence, reload, new-chat retrieval through the registered tools, real image encoding and the Venice role adapter. The test used a generated geometric fixture and made no Venice API calls. ST’s cleanup report left the saved image protected.
+
+The code was checked against ST **1.19.0**, commit `7e8663cd9c184a550b37238218bdd32c6efc68e9`.
+
+The 0.1.0 bridge was live-tested by the user with slash-command images and generation/inspection tool loops. The 0.2.0 album still requires the live acceptance steps above on the user's installation. Developer tests do not spend Venice credits or validate model compliance.
+
+The adapter does not restore excluded messages or pictures omitted by context limits. It preserves tool-call/result ordering; images from incomplete tool exchanges are withheld until a complete request. Album titles are labels and notes may be incomplete; the tool instructs the model to inspect actual image input before describing it.
+
+## Rollback
+
+Turn off the character’s **find and open saved pictures** checkbox to stop offering album tools. Keep the bridge enabled for the existing image-role fix. Stored album entries remain intact.
+
+Disabling the entire extension also disables the image-role fix; assistant images may then trigger Venice's original 400 error. Existing saved pictures/chats are not deleted by disabling the extension.
+
+For a server operator, the optional installer copies all eight runtime files and backs up a prior bridge installation:
 
 ```sh
 node install.mjs --app-root /actual/path/to/SillyTavern --dry-run
 node install.mjs --app-root /actual/path/to/SillyTavern
 ```
 
-Use the actual path inside the container if SillyTavern runs in Docker. The installer does not find containers or change Docker mounts. Confirm that `public/scripts/extensions/third-party` is on persistent storage before relying on survival across container recreation. Existing bridge versions are copied to `data/venice-image-bridge-backups/` before replacement; original Venice extension and chat files are untouched.
-
-Reload every open SillyTavern browser tab after installation. Open Extensions > Venice Image Bridge:
-
-1. Keep **Keep assistant pictures compatible with Venice** on.
-2. Open a test character’s one-to-one chat and enable image generation for that character. It is off for every character initially.
-3. Keep inline images/media on in Chat Completion settings.
-4. Enable function calling in Chat Completion settings. This also makes any other configured tools eligible; check the existing tool list.
-5. Keep the original Venice generator configured with the preferred model and size. The new tool always posts its image in the current chat, regardless of the original generator's `send_to_chat` checkbox.
-
-No character-card change is mandatory. A short optional instruction is: “When sharing a picture is appropriate, use VeniceCreateImage. Choose the visual prompt yourself. Only say you have sent a picture after the tool succeeds. Inspect the returned image before describing its actual details.”
-
-## Live acceptance tests still required
-
-Use a separate test conversation first; keep debugging separate from ongoing conversations.
-
-1. Confirm the extension appears and its status says the image-role fix is active. Confirm there are no import errors in the browser console.
-2. Send a normal text message and then a fresh user-attached picture. Both must receive replies.
-3. Generate an image with `/vimg`, then ask about the result. It must remain visibly attributed to the character, while the outgoing API request contains no assistant `image_url` and does contain the image under user role. No 400 should occur.
-4. Repeat using the original message image button.
-5. Enable the image tool for the test character and explicitly request one image. Confirm the tool is offered, called, the image posts, and a follow-up reply completes. Inspect the returned image input rather than accepting the model's claim that it can see it.
-6. Ask about a visible detail absent from the generation prompt. Follow with another text turn and confirm the image can still be included while within context.
-7. Open an old conversation containing the formerly rejected assistant image and confirm the next request is adapted without editing its history.
-8. Reload and confirm settings/attachments persist. Only then enable the tool for your chosen character and verify one image exchange.
-
-API image generations use the user's existing Venice credits. Local tests used dummy responses and consumed no Venice credits. No live API call was made by the developer environment.
-
-## Rollback
-
-Turn off **Keep assistant pictures compatible with Venice** and reload, or disable this entire extension in SillyTavern. This restores the original outgoing request behavior; assistant images can then cause the original 400 again if included with inline images on.
-
-The installer can remove only this bridge, copying it to a dated backup first:
-
-```sh
-node install.mjs --app-root /actual/path/to/SillyTavern --uninstall
-```
-
-The original generator and all stored chats remain intact. A server operator can restore a saved bridge directory from the backup location.
-
-## Verified locally
-
-17 automated tests pass: log-shaped assistant/user image input, multiple attachments, image-only messages, idempotency, provider scoping, text preservation, tool-call/result adjacency, incomplete tool exchanges, generation/save/post/inspect flow with simulated Venice, existing settings preservation, one-attempt limits, concurrent calls, persisted successful-turn guard, chat switching, cancellation, a SillyTavern host-interface harness, and installer dry-run/install/update/backup/removal/version refusal. JavaScript syntax checks pass.
-
-These are local unit and host-interface tests, not a real-browser SillyTavern session or a live Venice roundtrip.
-
-## Limits and design details
-
-- No cross-chat visual memory or automatic photo retrieval. Images must be in the outgoing context to be inspected. Text memories are still text.
-- Hidden/excluded messages and images dropped for context size are not restored by this adapter.
-- The adapter changes only outgoing assistant image parts. It does not fix malformed tool calls or unrelated request parameters. System/developer image inputs are outside this release's scope.
-- If an assistant tool call lacks all its results, the adapter withholds that image rather than inserting a user message into the unfinished tool exchange. It can be included in a later complete request.
-- The application-generated label adds a small amount of text after SillyTavern's initial token budgeting. Allow a little context headroom. Normal media-fetching, compression and image-token accounting remain SillyTavern's job.
-- The tool's one-attempt limit applies per latest user message and prevents spending loops. On failures a new user message is needed to try again. A browser reload resets the in-memory failed-attempt guard; successful generations remain detected from the stored bridge image marker.
-- The generator may still charge for requests that time out or are cancelled. It receives no automatic retry from this bridge.
-- The model decides whether to call an offered tool. Offering it is not a guarantee it will act on every request. No scheduled or background generation is added.
-- Avoid switching chats during a tool call. The bridge guards its own picture posting; unrelated SillyTavern tool-follow-up behavior remains controlled by SillyTavern.
-- The original extension's message and test buttons still bypass its `send_to_chat` checkbox, as in upstream. The adapter handles their outgoing pictures while active.
+It requires exactly ST 1.19.0, does not find Docker containers, and does not change mounts. Normal users should use the native extension manager instead.
 
 ## Sources reviewed
 
 - Original generator: https://github.com/AnonCollab/st-venice-image/blob/9f04082c92c62af284c7752811fc3c00f66a9921/index.js
-- SillyTavern 1.19.0: `public/scripts/openai.js`, `public/script.js`, `public/scripts/tool-calling.js`, `public/scripts/st-context.js`, `public/scripts/events.js`, and built-in stable-diffusion extension.
-- The reproduced failure involved assistant-role image content being rejected while user-role image input was accepted.
+- ST 1.19.0: `public/script.js`, `public/scripts/openai.js`, `public/scripts/st-context.js`, `public/scripts/tool-calling.js`, `public/scripts/chats.js`, `public/scripts/utils.js`, `src/endpoints/files.js`, `src/endpoints/settings.js`, `src/endpoints/data-maid.js`.
 
-This is a separately authored companion extension, not an upstream update or an official Venice/SillyTavern release.
+Independent companion extension; not an official Venice or SillyTavern release.

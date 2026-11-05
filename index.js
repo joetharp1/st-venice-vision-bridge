@@ -1,10 +1,11 @@
 import { extension_settings, getContext } from '../../../extensions.js';
-import { eventSource, event_types, saveSettingsDebounced } from '../../../../script.js';
+import { eventSource, event_types, saveSettingsDebounced, saveSettings, getRequestHeaders } from '../../../../script.js';
 import { saveBase64AsFile } from '../../../utils.js';
 import { getMessageTimeStamp } from '../../../RossAscends-mods.js';
 import { MEDIA_DISPLAY, MEDIA_SOURCE, MEDIA_TYPE } from '../../../constants.js';
 import { characterKey, isVeniceConnection } from './core.mjs';
 import { createBridge } from './runtime.mjs';
+import { mountAlbum } from './album-ui.mjs';
 
 const NAME = 'st-venice-vision-bridge';
 function settings() {
@@ -78,7 +79,7 @@ jQuery(() => {
             <p>Uses your existing Venice Image Generation key, model and size. Each tool generation uses your Venice credits. Maximum one tool attempt per user turn. Group chats are not supported by the image tool.</p>
             <div id="venice_bridge_refresh" class="menu_button">Refresh status</div>
             <p id="venice_bridge_status"></p>
-            <small>Version 0.1.0 · Built for SillyTavern 1.19.0</small>
+            <small>Version 0.2.0 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -93,6 +94,8 @@ jQuery(() => {
     eventSource.on(event_types.CHAT_CHANGED, refresh);
     eventSource.on(event_types.GENERATION_STOPPED, () => bridge.cancel());
     getContext().registerFunctionTool(bridge.tool());
+    mountAlbum({ getContext, getSettings: settings, extension_settings, eventSource, event_types,
+        saveSettings, saveSettingsDebounced, getRequestHeaders, getMessageTimeStamp, MEDIA_TYPE, MEDIA_SOURCE, MEDIA_DISPLAY });
     refresh();
-    console.info('[Venice Image Bridge] 0.1.0 loaded');
+    console.info('[Venice Image Bridge] 0.2.0 loaded');
 });

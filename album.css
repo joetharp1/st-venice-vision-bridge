@@ -1,0 +1,10 @@
+#venice_album { min-width: 0; }
+#venice_album label:not(.checkbox_label) { display: block; margin-top: 12px; }
+#venice_album input[type=file] { width: 100%; max-width: 100%; margin: 8px 0; }
+#venice_album .menu_button { white-space: normal; overflow-wrap: normal; width: auto; flex: 0 1 auto; min-height: 38px; max-width: 100%; padding: 8px 12px; }
+#venice_album .vab_actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+#venice_album .vab_card { padding: 12px; margin: 12px 0; border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 10px; overflow-wrap: anywhere; }
+#venice_album .vab_card img { display: block; width: 100%; height: 170px; object-fit: contain; margin-bottom: 8px; border-radius: 6px; }
+#venice_album .vab_card p { white-space: pre-wrap; }
+#venice_album .vab_error { color: #ff9292; }
+#venice_album.vab_busy button, #venice_album.vab_busy input, #venice_album.vab_busy select { pointer-events: none; opacity: .65; }

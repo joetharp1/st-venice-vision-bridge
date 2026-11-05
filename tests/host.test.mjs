@@ -28,11 +28,12 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
         fetch: async () => ({ ok: true, json: async () => ({ images: ['FAKE'] }) }) });
     const exportsByImport = {
         '../../../extensions.js': { extension_settings, getContext: () => context },
-        '../../../../script.js': { eventSource, event_types, saveSettingsDebounced() {} },
+        '../../../../script.js': { eventSource, event_types, saveSettingsDebounced() {}, saveSettings() {}, getRequestHeaders() {} },
         '../../../utils.js': { saveBase64AsFile: async () => '/user/images/TestCharacter/bridge.png' },
         '../../../RossAscends-mods.js': { getMessageTimeStamp: () => 'test-time' },
         '../../../constants.js': { MEDIA_DISPLAY: { GALLERY: 'gallery' }, MEDIA_SOURCE: { GENERATED: 'generated' }, MEDIA_TYPE: { IMAGE: 'image' } },
         './core.mjs': { characterKey, isVeniceConnection }, './runtime.mjs': { createBridge },
+        './album-ui.mjs': { mountAlbum() {} },
     };
     const module = new vm.SourceTextModule(await readFile(new URL('../index.js', import.meta.url), 'utf8'), { context: sandbox });
     await module.link(specifier => {
