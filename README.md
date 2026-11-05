@@ -1,11 +1,13 @@
-# Venice Image Bridge 0.2.0 — Picture albums
+# Venice Image Bridge 0.3.0 — Live image model catalogue and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
 ## What it does
 
 - Keeps assistant pictures visible under their original author, while moving their outgoing `image_url` inputs into labelled user-role messages accepted by Venice. Stored chat authors remain unchanged.
-- Offers the optional `VeniceCreateImage` tool using the existing [Venice image generator](https://github.com/AnonCollab/st-venice-image) settings. One generation attempt per user turn; no automatic retry.
+- Offers the optional `VeniceCreateImage` tool using the existing [Venice image generator](https://github.com/AnonCollab/st-venice-image) key and filters. One generation attempt per user turn; no automatic retry.
+- Loads Venice's current text-to-image catalogue and offers model-specific aspect ratio, resolution and quality options, or pixel dimensions. Displays supplied generation pricing and privacy tier. The selected model is shared across characters.
+- Adds a manual Generate button using the same model and request builder as the companion tool.
 - Adds **character albums that follow the same character across chats**, plus an explicitly selected shared album.
 - Lets you upload a picture or save an independent copy of an image already in the current chat, with a name and optional searchable notes.
 - Offers **VeniceFindPictures** and **VeniceOpenPicture**. Search returns catalogue text; opening attaches the actual saved image to the current chat for vision. No image-generation charge is incurred by opening an existing picture; normal chat/image-input usage still applies.
@@ -21,11 +23,25 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.2.0**. Avoid keeping another old SillyTavern tab open while changing album settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.3.0**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
 No terminal commands, new server plugin, new credentials or core edits are needed. Back up your SillyTavern user data as usual. Native extension installs and album storage require the Docker user-data directory to be persistent.
+
+## Choose from the live image catalogue
+
+1. Open **Extensions → Venice Image Bridge → Image model catalogue**. Keep Venice Image Generation installed with your API key.
+2. The catalogue loads directly from `GET https://api.venice.ai/api/v1/models?type=image` on page load. **Refresh models from Venice** reloads it on demand. Loading the list does not generate an image.
+3. Until you choose a model, **Use original setting** retains your existing generator's model and dimensions. Choosing a catalogue model overrides these for the bridge only; it does not overwrite the original extension's configuration.
+4. Select a model, then its supported shape/resolution/quality, or width and height for pixel-based models. Advertised defaults are used initially. The listed USD price is shown when supplied by Venice; account access and billing remain controlled by Venice.
+5. Ask the enabled companion for a picture, or open **Generate an image yourself**, enter a prompt, and press **Generate one image**. Manual generation requires the bridge and current character enabled on a direct Venice connection with inline media. Function calling is required only for companion tool calls. Each button press requests one charged image, with no automatic retry; the button and tool share a concurrency guard.
+
+The old **Venice Image Generation** dropdown, `/vimg`, and its message buttons keep their original settings and static choices. Use the bridge's new picker and manual button for the expanded catalogue. No duplicate extension installation is needed.
+
+Only text-to-image models are offered: edit, upscale, video and background-removal operations require different inputs/endpoints and are outside this update. `bria-bg-remover` is excluded even though Venice lists it under image. Offline models are labelled; a missing/offline selected model fails explicitly rather than silently spending on a replacement.
+
+The last catalogue and selection are cached with extension settings, without copying the API key. A failed refresh retains them. Old API keys restricted to private models may reject anonymized models with HTTP 403; selecting a model does not change those restrictions. Generation failures are never retried automatically. Prompts retain the bridge's existing 1500-character limit.
 
 ## First album test
 
@@ -67,7 +83,7 @@ Opening a saved picture posts an assistant message labelled as a retrieved refer
 
 The album tool opens at most **two different pictures per user turn**, and repeat opening of the same picture in that turn is idempotent. Chat switching and generation cancellation prevent pending opens from posting into a different conversation. Missing images produce an error instead of a success claim. The model still decides whether to use an offered tool.
 
-Image generation retains the 0.1.0 behaviour: original generator configuration, one attempt per user turn, concurrency guard, 120-second timeout, no automatic retries, and generated results posted into the current chat. Keep `st-venice-image` installed for generation. Album features do not require that generator. Original `/vimg` and message buttons continue to work.
+Image generation retains the one-tool-attempt-per-user-turn guard, shared concurrency guard, 120-second timeout, no automatic retries, and current-chat delivery. The optional catalogue selection and manual button were added in 0.3.0. Keep `st-venice-image` installed for the existing key and filter configuration. Album features do not require that generator. Original `/vimg` and message buttons continue to work with their original settings.
 
 ## Validation and limits
 
@@ -78,6 +94,8 @@ npm test
 ```
 
 Tests cover existing generation and adapter behaviour, persistent album metadata, private/shared scopes, cross-chat retrieval, archive retention, invalid images/URLs, failed saves, missing files, cancellation, chat switching, per-turn limits, pagination and installer upgrades. A local ST 1.19.0 browser test also passed upload, verified settings persistence, reload, new-chat retrieval through the registered tools, real image encoding and the Venice role adapter. The test used a generated geometric fixture and made no Venice API calls. ST’s cleanup report left the saved image protected.
+
+Version 0.3.0 passed all 35 automated tests. A separate 393-pixel mobile browser harness checked catalogue refresh, safe model labels, model-specific controls, price display, saved selection after reload, matching manual/tool request bodies, failed-refresh retention, invalid-dimension rejection, and horizontal overflow. It used synthetic catalogue and image responses; it did not test a paid generation against the live Venice service. After updating, refresh the live catalogue and generate one image to verify account access and provider behaviour.
 
 The code was checked against ST **1.19.0**, commit `7e8663cd9c184a550b37238218bdd32c6efc68e9`.
 
@@ -91,7 +109,7 @@ Turn off the character’s **find and open saved pictures** checkbox to stop off
 
 Disabling the entire extension also disables the image-role fix; assistant images may then trigger Venice's original 400 error. Existing saved pictures/chats are not deleted by disabling the extension.
 
-For a server operator, the optional installer copies all eight runtime files and backs up a prior bridge installation:
+For a server operator, the optional installer copies all ten runtime files and backs up a prior bridge installation:
 
 ```sh
 node install.mjs --app-root /actual/path/to/SillyTavern --dry-run
@@ -103,6 +121,9 @@ It requires exactly ST 1.19.0, does not find Docker containers, and does not cha
 ## Sources reviewed
 
 - Original generator: https://github.com/AnonCollab/st-venice-image/blob/9f04082c92c62af284c7752811fc3c00f66a9921/index.js
+- Venice model catalogue: https://docs.venice.ai/api-reference/endpoint/models/list
+- Venice model-specific sizing and request fields: https://docs.venice.ai/api-reference/endpoint/image/generate
+- Venice maintained image-generation reference: https://github.com/veniceai/skills/blob/main/skills/venice-image-generate/SKILL.md
 - ST 1.19.0: `public/script.js`, `public/scripts/openai.js`, `public/scripts/st-context.js`, `public/scripts/tool-calling.js`, `public/scripts/chats.js`, `public/scripts/utils.js`, `src/endpoints/files.js`, `src/endpoints/settings.js`, `src/endpoints/data-maid.js`.
 
 Independent companion extension; not an official Venice or SillyTavern release.

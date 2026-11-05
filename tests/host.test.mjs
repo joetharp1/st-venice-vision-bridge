@@ -34,6 +34,7 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
         '../../../constants.js': { MEDIA_DISPLAY: { GALLERY: 'gallery' }, MEDIA_SOURCE: { GENERATED: 'generated' }, MEDIA_TYPE: { IMAGE: 'image' } },
         './core.mjs': { characterKey, isVeniceConnection }, './runtime.mjs': { createBridge },
         './album-ui.mjs': { mountAlbum() {} },
+        './models-ui.mjs': { mountModels() {} },
     };
     const module = new vm.SourceTextModule(await readFile(new URL('../index.js', import.meta.url), 'utf8'), { context: sandbox });
     await module.link(specifier => {

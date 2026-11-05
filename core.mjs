@@ -1,3 +1,4 @@
+import { catalogueRequest } from './models.mjs';
 export const TOOL_NAME = 'VeniceCreateImage';
 export const IMAGE_LABEL = 'Image attached to the preceding assistant message, supplied automatically by the chat application for visual inspection. This is not a new message written by the human user.';
 
@@ -71,6 +72,9 @@ export function parseImageArguments(args) {
 
 export function imageRequestBody(settings, args) {
     const { prompt, negative } = parseImageArguments(args);
+    if (settings?.catalogueModel) {
+        return catalogueRequest(settings, prompt, [negative, settings.negative_prompt].filter(Boolean).join(', '));
+    }
     if (typeof settings?.model !== 'string' || !settings.model) throw new Error('Choose an image model in Venice Image Generation first.');
     const width = Number(settings.width), height = Number(settings.height);
     if (!Number.isInteger(width) || !Number.isInteger(height) || width < 64 || height < 64 || width > 4096 || height > 4096) {

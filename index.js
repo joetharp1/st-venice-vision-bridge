@@ -6,6 +6,7 @@ import { MEDIA_DISPLAY, MEDIA_SOURCE, MEDIA_TYPE } from '../../../constants.js';
 import { characterKey, isVeniceConnection } from './core.mjs';
 import { createBridge } from './runtime.mjs';
 import { mountAlbum } from './album-ui.mjs';
+import { mountModels } from './models-ui.mjs';
 
 const NAME = 'st-venice-vision-bridge';
 function settings() {
@@ -21,7 +22,7 @@ const bridge = createBridge({
     getGeneratorSettings: () => extension_settings['st-venice-image'],
     fetch: (...args) => fetch(...args),
     saveImage: (base64, name) => saveBase64AsFile(base64, name || 'Character', `venice_bridge_${crypto.randomUUID()}`, 'png'),
-    publishImage: async ({ url, prompt, context, isCurrent }) => {
+    publishImage: async ({ url, prompt, context, isCurrent, manual }) => {
         const message = {
             name: context.name2, is_user: false, is_system: false,
             send_date: getMessageTimeStamp(),
@@ -29,7 +30,7 @@ const bridge = createBridge({
             extra: {
                 media: [{ url, type: MEDIA_TYPE.IMAGE, title: prompt, generation_type: 'venice', source: MEDIA_SOURCE.GENERATED }],
                 media_display: MEDIA_DISPLAY.GALLERY, media_index: 0, inline_image: false,
-                venice_bridge: { version: 1, via_tool: true },
+                venice_bridge: { version: 1, via_tool: !manual },
             },
         };
         if (!isCurrent()) throw new Error('Chat changed before the image could be posted. It is saved in the gallery.');
@@ -76,10 +77,11 @@ jQuery(() => {
             <label class="checkbox_label"><input type="checkbox" id="venice_bridge_enabled"><span>Keep assistant pictures compatible with Venice</span></label>
             <p>Pictures stay in the chat under their original author. Image inputs are sent separately in the format Venice accepts.</p>
             <label class="checkbox_label"><input type="checkbox" id="venice_bridge_character"><span>Allow <span id="venice_bridge_character_name"></span> to generate images</span></label>
-            <p>Uses your existing Venice Image Generation key, model and size. Each tool generation uses your Venice credits. Maximum one tool attempt per user turn. Group chats are not supported by the image tool.</p>
+            <p>Uses your existing Venice Image Generation API key. Choose from the live image catalogue below, or keep your original model setting. Each image uses Venice credits. Maximum one tool attempt per user turn. Group chats are not supported.</p>
             <div id="venice_bridge_refresh" class="menu_button">Refresh status</div>
             <p id="venice_bridge_status"></p>
-            <small>Version 0.2.0 · Built for SillyTavern 1.19.0</small>
+            <div id="venice_bridge_models"></div>
+            <small>Version 0.3.0 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -94,8 +96,10 @@ jQuery(() => {
     eventSource.on(event_types.CHAT_CHANGED, refresh);
     eventSource.on(event_types.GENERATION_STOPPED, () => bridge.cancel());
     getContext().registerFunctionTool(bridge.tool());
+    mountModels({ getSettings: settings, getGeneratorSettings: () => extension_settings['st-venice-image'],
+        save: saveSettingsDebounced, request: (...args) => fetch(...args), bridge });
     mountAlbum({ getContext, getSettings: settings, extension_settings, eventSource, event_types,
         saveSettings, saveSettingsDebounced, getRequestHeaders, getMessageTimeStamp, MEDIA_TYPE, MEDIA_SOURCE, MEDIA_DISPLAY });
     refresh();
-    console.info('[Venice Image Bridge] 0.2.0 loaded');
+    console.info('[Venice Image Bridge] 0.3.0 loaded');
 });
