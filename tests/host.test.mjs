@@ -38,7 +38,7 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
         './core.mjs': { characterKey, isVeniceConnection }, './runtime.mjs': { createBridge },
         './album-ui.mjs': { mountAlbum() {} },
         './models-ui.mjs': { mountModels() {} },
-        './portraits.mjs': { loadPortrait() {} },
+        './portraits.mjs': { loadPortrait() {}, USER_PORTRAIT_KEY: '__human_reference__' },
         './portraits-ui.mjs': { mountPortraits() { return { useAlbumPortrait() {} }; } },
     };
     const module = new vm.SourceTextModule(await readFile(new URL('../index.js', import.meta.url), 'utf8'), { context: sandbox });

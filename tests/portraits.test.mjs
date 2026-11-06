@@ -129,3 +129,48 @@ test('reference loader never fetches external addresses and sends no API key to 
         return { ok: false };
     }, null), /could not be read/);
 });
+
+test('personal reference supports user alone and two distinct ordered sources with the user-selected model', async () => {
+    const h=setup();
+    h.own.portraits.__human_reference__={url:'/user/files/joe.jpg',model:'tier-ref'};
+    h.own.editModels.find(m=>m.id==='tier-ref').constraints.combineImages=true;
+    const b=createBridge(h.deps);assert.equal(b.userPortraitReady(),true);
+    await b.userPortraitTool().action({prompt:'At a table'});
+    assert.deepEqual(h.reads,['/user/files/joe.jpg']);assert.deepEqual(h.calls[0].body.images,[jpg]);
+    await assert.rejects(b.portraitTool().action({prompt:'Selfie'}),/One image attempt/);
+    h.next();await b.userPortraitTool().action({prompt:'Together on a sofa',include_character:true,image:png,model:'ignored'});
+    assert.deepEqual(h.reads.slice(1),['/user/files/joe.jpg','/user/images/A/original.png']);
+    assert.deepEqual(h.calls[1].body.images,[jpg,png]);assert.equal(h.calls[1].body.modelId,'tier-ref');
+    assert.ok(h.calls[1].body.prompt.startsWith('Reference image 1 is the human user. Reference image 2 is the current companion.'));
+    assert.equal(h.calls[1].body.safe_mode,true);assert.ok(!JSON.stringify(h.calls[1].body).includes('/user/'));
+    assert.equal(h.own.portraits['A.png'].url,'/user/images/A/original.png');
+    h.switch(1);await b.generateUserPortraitManual({prompt:'Together in a garden',include_character:true});
+    assert.deepEqual(h.reads.slice(-2),['/user/files/joe.jpg','/user/images/B/original.jpg']);
+});
+test('together validates model capability and both references before charging, never falls back',async()=>{
+    const h=setup(),b=createBridge(h.deps);
+    assert.equal(b.userPortraitReady(),false);
+    await assert.rejects(b.generateUserPortraitManual({prompt:'Test'}),/own reference/);
+    h.own.portraits.__human_reference__={url:'/user/files/joe.jpg',model:'ref-model'};
+    await assert.rejects(b.generateUserPortraitManual({prompt:'Test',include_character:true}),/supporting two/);
+    const m=h.own.editModels.find(m=>m.id==='ref-model');m.constraints.combineImages=false;m.constraints.maxInputImages=6;
+    await assert.rejects(b.generateUserPortraitManual({prompt:'Test',include_character:true}),/supporting two/);
+    m.constraints.combineImages=true;m.constraints.maxInputImages=1;
+    await assert.rejects(b.generateUserPortraitManual({prompt:'Test',include_character:true}),/supporting two/);
+    m.constraints.maxInputImages=3;delete h.own.portraits['A.png'].url;
+    await assert.rejects(b.generateUserPortraitManual({prompt:'Test',include_character:true}),/current companion/);
+    assert.equal(h.calls.length,0);
+});
+test('switch during second reference read prevents a paid request or publication to the new chat',async()=>{
+    const h=setup();h.own.portraits.__human_reference__={url:'/user/files/joe.jpg',model:'tier-ref'};
+    h.own.editModels.find(m=>m.id==='tier-ref').constraints.combineImages=true;
+    let finish,started;const reading=new Promise(r=>started=r);
+    h.deps.loadReference=async url=>url.includes('joe')?jpg:new Promise(r=>{finish=r;started();});
+    const b=createBridge(h.deps),pending=b.generateUserPortraitManual({prompt:'Together',include_character:true});
+    await reading;h.switch(1);finish(png);await assert.rejects(pending,/No image request/);assert.equal(h.calls.length,0);
+});
+test('two-reference listed cost includes per-input charges; existing one-reference estimate remains',()=>{
+    const model={pricing:{inpaint:{usd:.04},inputImages:{included:0,additional:{usd:.01}}}};
+    assert.match(portraitPrice(model,{},2),/\$0.06/);assert.match(portraitPrice(model,{},1),/\$0.05/);
+    model.pricing.inputImages.included=1;assert.match(portraitPrice(model,{},2),/\$0.05/);
+});

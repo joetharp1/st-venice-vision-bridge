@@ -174,3 +174,15 @@ Outgoing JPEG attachments with EXIF rotation or mirroring are decoded in the bro
 Conversion preserves pixel dimensions and uses JPEG quality 0.98; it is not a byte-lossless operation. A bounded in-memory cache avoids repeated conversion. Conversion failures show a warning and send the original. Photos above 48 megapixels use this fallback to avoid excessive canvas memory. No extra network requests or model calls are made.
 
 Update Venice Image Bridge in SillyTavern, reload, and confirm version 0.5.1. Send an original affected photo once to verify the provider-side result.
+
+## 0.6.0 — your own reference, alone or together
+
+The additional **Your own reference portrait** section stores one human-user reference for this ST account, separate from every companion reference. Upload your original photo once, save it, load reference image models and choose your editing model. The copy is saved in the private ST account’s shared image album and excluded from text retrieval. This release contains no user photos or personal data.
+
+Use **Make a picture of you** to select **You alone** or **You and the current companion**. Together uses your selected editing model, your image as reference 1 and the active companion’s saved portrait as reference 2. The catalogue must explicitly support at least two images; refresh older catalogues. The panel displays the listed charge for one or two inputs. Identity preservation is model-dependent; exact likeness is not guaranteed.
+
+Companions with bridge image generation enabled also get `VeniceCreateUserPortrait` once your reference and model are configured. Its `include_character` option selects both people. The existing self-portrait tool, its wording and initiation portrait behavior remain unchanged. All image tools share the existing one-attempt-per-user-turn guard and cancellation/chat-switch protection. No automatic fallbacks or retries.
+
+Verified against Venice’s official `veniceai/skills` image-edit documentation: `combineImages`, `maxInputImages`, ordered `images` arrays, `modelId` for multi-edit and per-input pricing. Both images are loaded locally as bytes; private ST URLs and API keys are not inserted into the prompt. No third-party reference URLs are accepted.
+
+Validation: 62 unit/host tests, mobile browser checks for both reference panels, ordered two-reference requests, missing-reference and unsupported-model guards, shared attempt limits, save rollback, switching companions, and the previous orientation tests. Provider calls are mocked; check one generation after installing.

@@ -2,6 +2,9 @@ import { imageData, localImagePath, MAX_IMAGE_BYTES } from './album-core.mjs';
 import { modelOptions } from './models.mjs';
 
 export const PORTRAIT_TOOL = 'VeniceCreateSelfPortrait';
+export const USER_PORTRAIT_KEY = '__human_reference__';
+export const USER_PORTRAIT_TOOL = 'VeniceCreateUserPortrait';
+export const TWO_PERSON_IDENTITY = 'Reference image 1 is the human user. Reference image 2 is the current companion. Create a picture containing both distinct people. Preserve each person’s own facial identity, apparent adult age, eye colour and hair characteristics; do not blend or swap their faces. Follow the requested scene, pose, clothing and expression.\n\n';
 export const IDENTITY_PROMPT = 'Use the person in the reference image as the same character in this new picture. Preserve their facial identity, apparent adult age, eye colour and hair characteristics. Follow the requested scene, pose, clothing and expression; do not copy the original background unless requested.\n\n';
 
 // Editing endpoints have no negative_prompt field. Keep these exclusions in the
@@ -50,17 +53,41 @@ export function portraitPlan(own, key, legacy, args) {
 }
 
 export function attachPortrait(plan, dataUrl) {
-    imageData(dataUrl); // Only image bytes, never a private ST URL, go to Venice.
-    return { ...plan.body, [plan.multi ? 'images' : 'image']: plan.multi ? [dataUrl] : dataUrl };
+    const images = Array.isArray(dataUrl) ? dataUrl : [dataUrl];
+    if (images.length !== (plan.urls?.length || 1)) throw new Error('Reference image count does not match the requested picture.');
+    images.forEach(imageData); // Only image bytes, never private ST URLs, go to Venice.
+    return { ...plan.body, [plan.multi ? 'images' : 'image']: plan.multi ? images : images[0] };
 }
 
-export function portraitPrice(model, options) {
+export function userPortraitPlan(own, character, legacy, args, together = false) {
+    if (!own.portraits?.[USER_PORTRAIT_KEY]?.url) throw new Error('Save your own reference portrait in Venice Image Bridge first.');
+    const plan = portraitPlan(own, USER_PORTRAIT_KEY, legacy, args);
+    if (!together) return plan;
+    const companion = own.portraits?.[character];
+    if (!companion?.url) throw new Error('Save a reference portrait for the current companion before making a picture together.');
+    const model = own.editModels.find(m => m.id === own.portraits[USER_PORTRAIT_KEY].model);
+    if (!supportsTwoReferences(model)) throw new Error('Choose a model supporting two references. Load reference image models again if the catalogue is old.');
+    const prompt = TWO_PERSON_IDENTITY + args.prompt.trim();
+    if (prompt.length > model.constraints.promptCharacterLimit) throw new Error('Shorten the scene description to fit both identity instructions.');
+    const body = { ...plan.body, modelId: model.id, prompt };
+    delete body.model;
+    return { ...plan, urls: [plan.url, companion.url], multi: true, body, endpoint: 'https://api.venice.ai/api/v1/image/multi-edit' };
+}
+
+export function supportsTwoReferences(model) {
+    const c = model?.constraints;
+    return !!c && c.combineImages !== false && (Number(c.maxInputImages) >= 2 || c.combineImages === true && !c.maxInputImages);
+}
+
+export function portraitPrice(model, options, count = 1) {
     const p = model.pricing || {};
     const base = p.quality?.[options.resolution]?.[options.quality]?.usd
         ?? p.resolutions?.[options.resolution]?.usd ?? p.inpaint?.usd;
-    const extra = p.inputImages?.included === 0 ? p.inputImages?.additional?.usd : 0;
+    const additional = p.inputImages?.additional?.usd ?? p.inputImages?.additional;
+    const excess = p.inputImages ? Math.max(0, count - (p.inputImages.included ?? 1)) : 0;
+    const extra = excess ? excess * additional : 0;
     if (!Number.isFinite(base) || !Number.isFinite(extra)) return 'Price unavailable for this selection; check Venice pricing before generating.';
-    return `Listed price with one reference: $${Number((base + extra).toFixed(6))} per image (USD).`;
+    return `Listed price with ${count === 1 ? 'one reference' : 'two references'}: $${Number((base + extra).toFixed(6))} per image (USD).`;
 }
 
 export const blobDataUrl = blob => new Promise((resolve, reject) => {

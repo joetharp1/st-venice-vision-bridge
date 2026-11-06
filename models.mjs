@@ -11,6 +11,8 @@ export function parseModels(data, type = 'image') {
         return { id: m.id, name: typeof s.name === 'string' ? s.name : m.id,
             offline: s.offline === true, privacy: typeof s.privacy === 'string' ? s.privacy : '',
             constraints: { aspectRatios: strings(c.aspectRatios), resolutions: strings(c.resolutions), qualities: strings(c.qualities),
+                combineImages: typeof c.combineImages === 'boolean' ? c.combineImages : undefined,
+                maxInputImages: Number.isInteger(c.maxInputImages) && c.maxInputImages > 0 ? c.maxInputImages : undefined,
                 defaultAspectRatio: c.defaultAspectRatio, defaultResolution: c.defaultResolution, defaultQuality: c.defaultQuality,
                 widthHeightDivisor: Number(c.widthHeightDivisor) || 8, promptCharacterLimit: Number(c.promptCharacterLimit) || 1500 },
             pricing: s.pricing || {} };

@@ -8,7 +8,7 @@ import { createBridge } from './runtime.mjs';
 import { mountAlbum } from './album-ui.mjs';
 import { mountModels } from './models-ui.mjs';
 import { mountPortraits } from './portraits-ui.mjs';
-import { loadPortrait } from './portraits.mjs';
+import { loadPortrait, USER_PORTRAIT_KEY } from './portraits.mjs';
 import { createOrientationNormalizer } from './orientation.mjs';
 
 const NAME = 'st-venice-vision-bridge';
@@ -107,8 +107,8 @@ jQuery(() => {
             <p>Uses your existing Venice Image Generation API key. Choose from the live image catalogue below, or keep your original model setting. Each image uses Venice credits. Maximum one tool attempt per user turn. Group chats are not supported.</p>
             <div id="venice_bridge_refresh" class="menu_button">Refresh status</div>
             <p id="venice_bridge_status"></p>
-            <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div>
-            <small>Version 0.5.1 · Built for SillyTavern 1.19.0</small>
+            <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div><div id="venice_bridge_user_portrait"></div>
+            <small>Version 0.6.0 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -130,6 +130,7 @@ jQuery(() => {
     eventSource.on(event_types.GENERATION_STOPPED, () => bridge.handleGenerationStopped());
     getContext().registerFunctionTool(bridge.tool());
     getContext().registerFunctionTool(bridge.portraitTool());
+    getContext().registerFunctionTool(bridge.userPortraitTool());
     mountModels({ getSettings: settings, getGeneratorSettings: () => extension_settings['st-venice-image'],
         save: saveSettingsDebounced, request: (...args) => fetch(...args), bridge });
     let album;
@@ -141,8 +142,16 @@ jQuery(() => {
             album.refreshUI?.();
             return record.url;
         } });
+    mountPortraits({ userPortrait: true, getContext, getSettings: settings, getGeneratorSettings: () => extension_settings['st-venice-image'],
+        request: (...args) => fetch(...args), loadReference, persist: persistPortraitSettings, bridge, eventSource, event_types,
+        saveReference: async (dataUrl, title, key) => {
+            if (key !== USER_PORTRAIT_KEY || !characterKey(getContext())) throw new Error('Open a companion chat before saving your reference.');
+            const record = await album.save({ dataUrl, title, notes: 'Human user reference portrait. Keep this original file.', shared: true });
+            album.refreshUI?.();
+            return record.url;
+        } });
     album = mountAlbum({ onReference: portraits.useAlbumPortrait, getContext, getSettings: settings, extension_settings, eventSource, event_types,
         saveSettings, saveSettingsDebounced, getRequestHeaders, getMessageTimeStamp, MEDIA_TYPE, MEDIA_SOURCE, MEDIA_DISPLAY });
     refresh();
-    console.info('[Venice Image Bridge] 0.5.0 loaded');
+    console.info('[Venice Image Bridge] 0.6.0 loaded');
 });

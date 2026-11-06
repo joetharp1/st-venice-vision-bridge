@@ -25,3 +25,9 @@
 #venice_bridge_portraits input[type=file], #venice_bridge_portraits select { max-width: 100%; width: 100%; }
 
 #venice_bridge_portraits input[type=file] { display: block; box-sizing: border-box; margin: 8px 0; }
+
+#venice_bridge_user_portrait { min-width: 0; overflow-wrap: anywhere; }
+#venice_bridge_user_portrait label { display: block; margin-top: 10px; }
+#venice_bridge_user_portrait .menu_button { display: block; box-sizing: border-box; width: 100%; white-space: normal; overflow-wrap: normal; word-break: normal; max-width: 100%; min-height: 38px; padding: 8px 12px; }
+#venice_bridge_user_portrait input[type=file], #venice_bridge_user_portrait select { max-width: 100%; width: 100%; }
+#venice_bridge_user_portrait input[type=file] { display: block; box-sizing: border-box; margin: 8px 0; }

@@ -1,6 +1,7 @@
 import { adaptAssistantImages, characterKey, imageRequestBody, isVeniceConnection, TOOL_NAME } from './core.mjs';
 import { selectedGeneratorSettings } from './models.mjs';
 import { portraitPlan, attachPortrait, editedImage, PORTRAIT_TOOL, initiationPortraitArgs, referenceCostUsd } from './portraits.mjs';
+import { userPortraitPlan, USER_PORTRAIT_KEY, USER_PORTRAIT_TOOL } from './portraits.mjs';
 
 export function createBridge(deps) {
     const { getContext, getSettings, getGeneratorSettings, fetch: request, saveImage, publishImage } = deps;
@@ -83,7 +84,9 @@ export function createBridge(deps) {
         }
         const legacy = { ...getGeneratorSettings() };
         const settings = portrait ? legacy : selectedGeneratorSettings(legacy, getSettings());
-        const plan = portrait ? portraitPlan(getSettings(), characterKey(c), legacy, args) : null;
+        const human = portrait === 'user' || portrait === 'together';
+        const plan = human ? userPortraitPlan(getSettings(), characterKey(c), legacy, args, portrait === 'together')
+            : portrait ? portraitPlan(getSettings(), characterKey(c), legacy, args) : null;
         const initiationCost = allowance ? referenceCostUsd(getSettings(), characterKey(c)) : null;
         let body = portrait ? plan.body : imageRequestBody(settings, args);
         const identity = { chat: c.chat, chatId: c.chatId, characterId: c.characterId, key: characterKey(c), name: c.name2 };
@@ -100,9 +103,13 @@ export function createBridge(deps) {
         const timeout = setTimeout(() => controller?.abort(), 120000);
         try {
             if (portrait) {
-                const dataUrl = await deps.loadReference(plan.url, controller.signal);
+                const images = [];
+                for (const url of plan.urls || [plan.url]) {
+                    images.push(await deps.loadReference(url, controller.signal));
+                    if (!stillHere() || controller.signal.aborted) throw new Error('Chat changed or generation stopped before the reference was sent. No image request was made.');
+                }
                 if (!stillHere() || controller.signal.aborted) throw new Error('Chat changed or generation stopped before the reference was sent. No image request was made.');
-                body = attachPortrait(plan, dataUrl);
+                body = attachPortrait(plan, images);
             }
             if (allowance) {
                 validAllowance(allowance);
@@ -164,7 +171,23 @@ export function createBridge(deps) {
             shouldRegister: portraitReady, action: args => generate(args, false, true), formatMessage: () => 'Creating a picture using my reference portrait…' };
     }
 
-    return { portraitReady, portraitTool, generatePortraitManual: args => generate(args, true, true), adapt, generate: args => generate(args), generateManual: args => generate(args, true), tool, ready, manualReady, cancel,
+    function userPortraitReady() {
+        const s = getSettings(), ref = s.portraits?.[USER_PORTRAIT_KEY];
+        return ready() && !!(ref?.url && s.editModels?.some(m => m.id === ref.model && !m.offline));
+    }
+    function userPortraitTool() {
+        return { name: USER_PORTRAIT_TOOL, displayName: 'Create a picture of the user or both of you',
+            description: 'Create a picture of the human user using their saved reference. Set include_character to true for a picture of the user and yourself together, using both saved references. Describe the scene; reference identities are attached automatically. One image attempt per user turn shared with the other image tools. After success or failure, reply in words.',
+            parameters: { type: 'object', properties: {
+                prompt: { type: 'string', description: 'Scene, pose, clothing and expression, up to 1500 characters.' },
+                include_character: { type: 'boolean', description: 'True to include the current companion with the human user; false for the human user alone.' },
+            }, required: ['prompt'], additionalProperties: false },
+            shouldRegister: userPortraitReady,
+            action: args => generate(args, false, args?.include_character === true ? 'together' : 'user'),
+            formatMessage: () => 'Creating a picture using the saved personal reference…' };
+    }
+
+    return { userPortraitReady, userPortraitTool, generateUserPortraitManual: args => generate(args, true, args?.include_character === true ? 'together' : 'user'), portraitReady, portraitTool, generatePortraitManual: args => generate(args, true, true), adapt, generate: args => generate(args), generateManual: args => generate(args, true), tool, ready, manualReady, cancel,
         initiationVersion: 1, beginInitiation,
         claimInitiation: owner => {
             if (busy || initiationOwner) throw new Error('Image bridge already has an owner.');

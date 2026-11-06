@@ -1,28 +1,31 @@
 import { characterKey } from './core.mjs';
 import { localImagePath } from './album-core.mjs';
 import { fetchModels, modelOptions } from './models.mjs';
-import { validatePortrait, portraitPrice } from './portraits.mjs';
+import { validatePortrait, portraitPrice, USER_PORTRAIT_KEY, supportsTwoReferences } from './portraits.mjs';
 
 export function mountPortraits(host) {
     const { getContext, getSettings, getGeneratorSettings, request, bridge } = host;
     const doc = host.document || document, origin = host.origin || location.origin;
-    const root = doc.getElementById('venice_bridge_portraits');
+    const personal = !!host.userPortrait;
+    const root = doc.getElementById(personal ? 'venice_bridge_user_portrait' : 'venice_bridge_portraits');
+    const currentKey = () => characterKey(getContext()) ? (personal ? USER_PORTRAIT_KEY : characterKey(getContext())) : null;
     root.innerHTML = `
-      <hr><h4>My reference portrait · <span data-ref="name"></span></h4>
-      <p>Save one original face for this character. Their self-portrait tool will attach it automatically to each new picture. The reference stays fixed until you replace it here.</p>
+      <hr><h4>${personal ? "Your own reference portrait" : "My reference portrait"} · <span data-ref="name"></span></h4>
+      <p>${personal ? "Save your own face once for use across your companion chats in this ST account. Choose a picture of you alone or you and the current companion together. Both references stay separate." : "Save one original face for this character. Their self-portrait tool will attach it automatically to each new picture. The reference stays fixed until you replace it here."}</p>
       <img data-ref="preview" alt="Saved reference portrait" hidden style="max-width:140px;max-height:180px;object-fit:contain">
       <p data-ref="title"></p>
       <label>Choose a portrait from your device<input type="file" data-ref="file" accept="image/png,image/jpeg,image/webp" style="max-width:100%"></label>
       <button type="button" class="menu_button" data-ref="upload">Save reference portrait</button>
       <button type="button" class="menu_button" data-ref="clear">Stop using this reference</button>
-      <p><small>You can also choose “Use as reference portrait” on a saved picture in the album below. PNG, JPEG or WebP, up to 8 MB. A separate copy is kept in this character’s picture album.</small></p>
+      <p><small>${personal ? "Choose your own original portrait from your device." : "You can also choose “Use as reference portrait” on a saved picture in the album below."} PNG, JPEG or WebP, up to 8 MB. ${personal ? "Your copy is kept in the shared picture album for this ST account." : "A separate copy is kept in this character’s picture album."}</small></p>
       <button type="button" class="menu_button" data-ref="refresh">Load reference image models</button>
       <label>Reference image model<select class="text_pole" data-ref="model"></select></label>
       <div data-ref="options"></div><p data-ref="price"></p>
       <p><small>Reference pictures use an editing model and Venice credits. Provider content rules still apply. Safe Mode follows Venice Image Generation. Its negative-prompt box applies to ordinary generation; the editing API has no separate negative-prompt field. Describe exclusions in the scene if needed.</small></p>
-      <details><summary>Test a self-portrait</summary>
+      <details><summary>${personal ? "Make a picture of you" : "Test a self-portrait"}</summary>
+        ${personal ? '<label>People in the picture<select class="text_pole" data-ref="subjects"><option value="user">You alone</option><option value="together">You and the current companion</option></select></label>' : ""}
         <textarea class="text_pole" data-ref="prompt" maxlength="1500" rows="3" placeholder="Describe a new scene, outfit or expression" aria-label="Self-portrait description"></textarea>
-        <button type="button" class="menu_button" data-ref="generate">Generate self-portrait · uses credits</button>
+        <button type="button" class="menu_button" data-ref="generate">${personal ? "Generate your picture" : "Generate self-portrait"} · uses credits</button>
       </details>
       <p data-ref="status" role="status" aria-live="polite"></p>`;
     const el = name => root.querySelector(`[data-ref="${name}"]`);
@@ -30,11 +33,11 @@ export function mountPortraits(host) {
     const option = (value, text) => { const o = doc.createElement('option'); o.value = value; o.textContent = text; return o; };
     let busy = false, shownKey;
     const capture = () => {
-        const key = characterKey(getContext());
+        const key = currentKey();
         if (!key) throw new Error('Open a one-to-one character chat first.');
         return key;
     };
-    const same = key => { if (characterKey(getContext()) !== key) throw new Error('Character changed. Select the intended character and try again.'); };
+    const same = key => { if (currentKey() !== key) throw new Error('Character changed. Select the intended character and try again.'); };
     const ref = key => getSettings().portraits?.[key] || {};
     async function saveRef(key, value) {
         same(key);
@@ -51,12 +54,12 @@ export function mountPortraits(host) {
         finally { busy = false; refresh(); }
     }
     function refresh() {
-        const c = getContext(), key = characterKey(c), saved = ref(key), models = getSettings().editModels || [];
+        const c = getContext(), key = currentKey(), saved = ref(key), models = getSettings().editModels || [];
         if (shownKey !== key) { el('file').value = ''; el('prompt').value = ''; status(''); shownKey = key; }
-        el('name').textContent = key ? c.name2 : 'Select a character';
+        el('name').textContent = key ? (personal ? 'You' : c.name2) : 'Select a character';
         const img = el('preview'); img.hidden = true; img.removeAttribute('src');
         if (saved.url) { try { img.src = localImagePath(saved.url, origin); img.hidden = false; } catch { status('Saved portrait address is invalid. Choose the portrait again.'); } }
-        el('title').textContent = saved.url ? `Reference: ${saved.title || 'Original portrait'}` : 'No reference saved for this character.';
+        el('title').textContent = saved.url ? `Reference: ${saved.title || 'Original portrait'}` : (personal ? 'No personal reference saved yet.' : 'No reference saved for this character.');
         const select = el('model'); select.replaceChildren(option('', 'Choose a reference image model'));
         for (const model of models) { const o = option(model.id, `${model.name} (${model.id})${model.offline ? ' — offline' : ''}`); o.disabled = model.offline; select.append(o); }
         if (saved.model && !models.some(m => m.id === saved.model)) select.append(option(saved.model, `${saved.model} — missing from catalogue`));
@@ -76,11 +79,17 @@ export function mountPortraits(host) {
                 });
                 wrapper.append(input); el('options').append(wrapper);
             }
-            el('price').textContent = `${portraitPrice(model, values)}${model.privacy ? ` Privacy: ${model.privacy}.` : ''}`;
+            el('price').textContent = `${portraitPrice(model, values, personal && el('subjects').value === 'together' ? 2 : 1)}${model.privacy ? ` Privacy: ${model.privacy}.` : ''}`;
         }
         root.querySelectorAll('button,select,input,textarea').forEach(node => { node.disabled = busy || !key; });
         el('clear').disabled = busy || !key || !saved.url;
         el('generate').disabled = busy || !key || !saved.url || !model || model.offline;
+        if (personal && el('subjects').value === 'together') {
+            const companion = getSettings().portraits?.[characterKey(c)];
+            el('generate').disabled ||= !companion?.url || !supportsTwoReferences(model);
+            if (!companion?.url) el('price').textContent = 'Save the current companion’s reference above first.';
+            else if (!supportsTwoReferences(model)) el('price').textContent = 'Load reference image models, then choose one supporting two images.';
+        }
     }
     async function saveCopy(dataUrl, title, key) {
         same(key);
@@ -90,7 +99,7 @@ export function mountPortraits(host) {
         status('Reference portrait saved. Choose a reference image model below if one is not selected.');
     }
     el('upload').addEventListener('click', () => {
-        const file = el('file').files[0], key = characterKey(getContext());
+        const file = el('file').files[0], key = currentKey();
         void run(async () => {
             if (!file) throw new Error('Choose a portrait file first.');
             status('Saving reference portrait…');
@@ -98,12 +107,12 @@ export function mountPortraits(host) {
         });
     });
     el('clear').addEventListener('click', () => {
-        const key = characterKey(getContext());
+        const key = currentKey();
         void run(async () => { const saved = { ...ref(key) }; delete saved.url; delete saved.title; await saveRef(key, saved); status('Reference detached. The saved image file was kept.'); });
     });
     el('model').addEventListener('change', () => {
-        const key = characterKey(getContext()), model = el('model').value;
-        void run(async () => { await saveRef(key, { ...ref(key), model, options: {} }); status('Reference image model saved for this character.'); });
+        const key = currentKey(), model = el('model').value;
+        void run(async () => { await saveRef(key, { ...ref(key), model, options: {} }); status(personal ? 'Your reference image model is saved.' : 'Reference image model saved for this character.'); });
     });
     el('refresh').addEventListener('click', () => run(async () => {
         status('Loading editing models…'); const key = getGeneratorSettings()?.api_key;
@@ -116,8 +125,14 @@ export function mountPortraits(host) {
     }));
     el('generate').addEventListener('click', () => {
         const prompt = el('prompt').value;
-        void run(async () => { status('Creating a self-portrait…'); await bridge.generatePortraitManual({ prompt }); status('Self-portrait posted in the original chat.'); });
+        const include_character = personal && el('subjects').value === 'together';
+        void run(async () => { status('Creating a reference picture…');
+            if (personal) await bridge.generateUserPortraitManual({ prompt, include_character });
+            else await bridge.generatePortraitManual({ prompt });
+            status('Picture posted in the original chat.');
+        });
     });
+    if (personal) el('subjects').addEventListener('change', refresh);
     host.eventSource.on(host.event_types.CHAT_CHANGED, refresh);
     refresh();
     return { refresh, useAlbumPortrait: async (url, title, key) => {
