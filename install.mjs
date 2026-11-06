@@ -11,7 +11,7 @@ const rootIndex = args.indexOf('--app-root');
 const root = path.resolve(rootIndex >= 0 ? args[rootIndex + 1] || '' : process.cwd());
 const dryRun = args.includes('--dry-run');
 const uninstall = args.includes('--uninstall');
-const files = ['manifest.json', 'index.js', 'core.mjs', 'orientation.mjs', 'runtime.mjs', 'continuation.mjs', 'models.mjs', 'models-ui.mjs', 'portraits.mjs', 'portraits-ui.mjs', 'album-core.mjs', 'album-runtime.mjs', 'album-ui.mjs', 'album.css'];
+const files = ['manifest.json', 'index.js', 'core.mjs', 'orientation.mjs', 'runtime.mjs', 'continuation.mjs', 'transport.mjs', 'models.mjs', 'models-ui.mjs', 'portraits.mjs', 'portraits-ui.mjs', 'album-core.mjs', 'album-runtime.mjs', 'album-ui.mjs', 'album.css'];
 try {
     const info = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
     if (info.name?.toLowerCase() !== 'sillytavern' || info.version !== '1.19.0') {

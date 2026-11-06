@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.6.1 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.6.2 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -199,3 +199,16 @@ All image tools are withheld after their shared one-attempt-per-user-turn limit 
 Every companion self-portrait request now uses the exact existing initiation visual tail and folded exclusions. The identity prefix and fixed tail are reserved before the scene is truncated to the selected model's character limit. Initiations keep one copy of the tail. Human-user and two-person portraits retain their separate identity instructions rather than imposing the companion's skin specification on the human reference.
 
 Update this extension normally and reload; confirm **0.6.1**. No keys, references or settings need re-entering. Validation includes source-contract checks against ST 1.19.0, host caption/publication/continuation checks, exactly-once scheduling and native-follow-up deduplication, cancellation, prompt limits and tail coverage. Provider calls in tests are mocked; the next new self-portrait verifies the live model's response.
+
+
+## 0.6.2 — bounded image viewing copies for chat requests
+
+A live chat returned HTTP 413 and replied again when inline images were disabled. ST 1.19.0's Custom connection does not apply its large-image compression branch. This release prepares temporary viewing copies at `CHAT_COMPLETION_SETTINGS_READY`, where the outgoing messages and request settings are available. It applies only with the bridge enabled and the active Custom Venice connection.
+
+The conservative local budget is 4 MiB for the measured outgoing request, with 16 KiB reserved for later small settings changes, and at most 512 KiB of inline data per viewing image. This is a bridge budget, not a verified Venice service limit. JSON overhead is counted as UTF-8; image data is budgeted across the whole included history. Large inputs are rendered as JPEG at up to 2048 pixels on the longest side, reducing quality and dimensions as needed to fit. The complete frame and aspect ratio stay intact; no cropping or upscaling. Copies may reach 512 pixels on the longest side, so fine text/detail may be reduced. Transparency is composited on white.
+
+Gallery images, message attachments, identity references and generated output files are never changed. No historical image is silently removed, no text is rewritten, and tool metadata stays intact. Existing chat images also benefit on their next outgoing request. Smaller images pass through. Conversion is sequential, with a bounded cache and stop/chat-switch checks. If a copy cannot meet the budget, the request stops with a visible explanation instead of omitting the image or sending a known oversized payload. The bridge panel reports image count and before/after size, never chat content or image data.
+
+Update, reload, confirm 0.6.2, then re-enable **Send inline images/media** and send a short normal message with initiation still off for the initial live check. No new portrait, chat or reference upload is needed. Once ordinary replies work, initiations can be re-enabled.
+
+Validation: 81 unit/host/source checks; real Chromium converted two large PNG inputs from 25,263,786 to 896,148 bytes (1024×768 viewing copies) while retaining both images, corner orientation, proportions and originals. All 16 real JPEG orientation fixtures also passed. Tests use generated fixture images and mock provider calls; the live request still needs checking after update.

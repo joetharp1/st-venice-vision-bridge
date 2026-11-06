@@ -11,9 +11,16 @@ import { mountAlbum } from './album-ui.mjs';
 import { mountModels } from './models-ui.mjs';
 import { mountPortraits } from './portraits-ui.mjs';
 import { loadPortrait, USER_PORTRAIT_KEY } from './portraits.mjs';
+import { createImageTransport } from './transport.mjs';
 import { createOrientationNormalizer } from './orientation.mjs';
 
 const NAME = 'st-venice-vision-bridge';
+let transportEpoch = 0;
+let transportStatus = 'Image viewing copies prepared automatically; saved originals stay unchanged.';
+const prepareImageTransport = createImageTransport({ onStats: stats => {
+    transportStatus = `${stats.images} image(s): request ${(stats.beforeBytes / 1048576).toFixed(2)} → ${(stats.afterBytes / 1048576).toFixed(2)} MB; ${stats.resized} viewing copies reduced.`;
+    $('#venice_bridge_transport').text(transportStatus);
+} });
 const normalizeOrientation = createOrientationNormalizer({
     onError: error => {
         console.warn('[Venice Image Bridge] Photo orientation correction failed:', error.message);
@@ -119,9 +126,9 @@ jQuery(() => {
             <label class="checkbox_label"><input type="checkbox" id="venice_bridge_character"><span>Allow <span id="venice_bridge_character_name"></span> to generate images</span></label>
             <p>Uses your existing Venice Image Generation API key. Choose from the live image catalogue below, or keep your original model setting. Each image uses Venice credits. Maximum one tool attempt per user turn. Group chats are not supported.</p>
             <div id="venice_bridge_refresh" class="menu_button">Refresh status</div>
-            <p id="venice_bridge_status"></p>
+            <p id="venice_bridge_status"></p><p id="venice_bridge_transport">Image viewing copies prepared automatically; saved originals stay unchanged.</p>
             <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div><div id="venice_bridge_user_portrait"></div>
-            <small>Version 0.6.1 · Built for SillyTavern 1.19.0</small>
+            <small>Version 0.6.2 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -139,11 +146,25 @@ jQuery(() => {
         }
         bridge.adapt(event);
     });
-    eventSource.on(event_types.CHAT_CHANGED, () => { portraitContinuation.cancel(); refresh(); });
+    eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, async data => {
+        if (!settings().enabled || !isVeniceConnection(getContext())) return;
+        const c = getContext(), chat = c.chat, id = c.chatId, epoch = transportEpoch;
+        try {
+            const prepared = await prepareImageTransport(data, { isCurrent: () => epoch === transportEpoch && getContext().chat === chat && getContext().chatId === id });
+            if (getContext().chat !== chat || getContext().chatId !== id) throw new Error('Chat changed while preparing image viewing copies.');
+            if (prepared !== data) data.messages = prepared.messages;
+        } catch (error) {
+            transportStatus = `Image request paused: ${error.message} Saved photos are unchanged.`;
+            $('#venice_bridge_transport').text(transportStatus);
+            toastr.error(transportStatus, 'Venice image request', { timeOut: 15000 });
+            throw error;
+        }
+    });
+    eventSource.on(event_types.CHAT_CHANGED, () => { transportEpoch++; portraitContinuation.cancel(); refresh(); });
     eventSource.on(event_types.MESSAGE_SENT, () => portraitContinuation.cancel());
-    eventSource.on(event_types.GENERATION_STARTED, (...args) => portraitContinuation.generationStarted(...args));
+    eventSource.on(event_types.GENERATION_STARTED, (...args) => { if (!args[2]) transportEpoch++; portraitContinuation.generationStarted(...args); });
     eventSource.on(event_types.GENERATION_ENDED, () => portraitContinuation.generationEnded());
-    eventSource.on(event_types.GENERATION_STOPPED, () => { portraitContinuation.cancel(); bridge.handleGenerationStopped(); });
+    eventSource.on(event_types.GENERATION_STOPPED, () => { transportEpoch++; portraitContinuation.cancel(); bridge.handleGenerationStopped(); });
     getContext().registerFunctionTool(bridge.tool());
     getContext().registerFunctionTool(bridge.portraitTool());
     getContext().registerFunctionTool(bridge.userPortraitTool());

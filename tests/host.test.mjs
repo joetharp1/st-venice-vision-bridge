@@ -3,6 +3,7 @@ import { createPortraitContinuation } from '../continuation.mjs';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
+import { createImageTransport } from '../transport.mjs';
 import { parseModels } from '../models.mjs';
 import { createBridge } from '../runtime.mjs';
 import { characterKey, isVeniceConnection } from '../core.mjs';
@@ -23,7 +24,7 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
         registerFunctionTool: definition => tools.set(definition.name, definition),
         addOneMessage: message => rendered.push(message), saveChat: async () => { saved++; },
     };
-    const event_types = { GENERATION_STARTED: 'started', GENERATION_ENDED: 'ended', MESSAGE_SENT: 'sent', CHAT_COMPLETION_PROMPT_READY: 'chat_completion_prompt_ready', CHAT_CHANGED: 'chat_id_changed', GENERATION_STOPPED: 'generation_stopped', MESSAGE_RECEIVED: 'message_received', CHARACTER_MESSAGE_RENDERED: 'character_message_rendered' };
+    const event_types = { CHAT_COMPLETION_SETTINGS_READY: 'settings_ready', GENERATION_STARTED: 'started', GENERATION_ENDED: 'ended', MESSAGE_SENT: 'sent', CHAT_COMPLETION_PROMPT_READY: 'chat_completion_prompt_ready', CHAT_CHANGED: 'chat_id_changed', GENERATION_STOPPED: 'generation_stopped', MESSAGE_RECEIVED: 'message_received', CHARACTER_MESSAGE_RENDERED: 'character_message_rendered' };
     const eventSource = { on(name, callback) { events.set(name, callback); }, async emit(name, ...args) { await events.get(name)?.(...args); } };
     const $ = selector => {
         if (!controls.has(selector)) controls.set(selector, { properties: {}, handlers: {}, prop(name, value) { this.properties[name] = value; return this; }, text(value) { this.textValue = value; return this; }, append(value) { this.html = value; return this; }, on(name, handler) { this.handlers[name] = handler; return this; } });
@@ -34,6 +35,7 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
     const exportsByImport = {
         '../../../extensions.js': { extension_settings, getContext: () => context },
         '../../../chats.js': { hasPendingFileAttachment: () => false },
+        './transport.mjs': { createImageTransport: options => createImageTransport({ ...options, render: async () => png }) },
         './continuation.mjs': { createPortraitContinuation: options => (continuation = createPortraitContinuation({ ...options, setTimer: () => 1, clearTimer: () => {} })) },
         '../../../../script.js': { Generate: async (type, options) => { assert.equal(type, 'normal'); assert.equal(options.automatic_trigger, true); followups++; }, isGenerating: () => false, eventSource, event_types, saveSettingsDebounced() {}, saveSettings() {}, getRequestHeaders() {} },
         '../../../utils.js': { saveBase64AsFile: async () => '/user/images/TestCharacter/bridge.png' },
@@ -80,6 +82,13 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
     await continuation.flush(); await continuation.flush();
     assert.equal(followups, 1);
     assert.equal(tools.get('VeniceCreateSelfPortrait').shouldRegister(), false);
+    const large = 'data:image/png;base64,' + 'A'.repeat(5 * 1024 * 1024);
+    const transportRequest = { messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: large } }] }] };
+    const originalTransport = structuredClone(transportRequest);
+    await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, transportRequest);
+    assert.equal(transportRequest.messages[0].content[0].image_url.url, png);
+    assert.equal(originalTransport.messages[0].content[0].image_url.url, large);
+    assert.match(controls.get('#venice_bridge_transport').textValue, /viewing copies reduced/);
     const userPhoto = () => ({ chat: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: tagged, detail: 'high' } }] }] });
     const dry = userPhoto(); dry.dryRun = true;
     await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, dry); assert.equal(conversions, 0);
@@ -89,9 +98,14 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
     extension_settings['st-venice-vision-bridge'].enabled = false;
     const disabled = userPhoto(); await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, disabled);
     assert.equal(disabled.chat[0].content[0].image_url.url, tagged);
+    const noTransport = structuredClone(originalTransport);
+    await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, noTransport);
+    assert.deepEqual(noTransport, originalTransport);
     extension_settings['st-venice-vision-bridge'].enabled = true;
     context.chatCompletionSettings.custom_url = 'https://example.test/v1';
     const other = userPhoto(); await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, other);
     assert.equal(other.chat[0].content[0].image_url.url, tagged);
+    await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, noTransport);
+    assert.deepEqual(noTransport, originalTransport);
 
 });
