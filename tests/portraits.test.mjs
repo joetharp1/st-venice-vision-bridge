@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createBridge } from '../runtime.mjs';
 import { parseModels, fetchModels } from '../models.mjs';
-import { portraitPlan, attachPortrait, editedImage, portraitPrice, loadPortrait } from '../portraits.mjs';
+import { INITIATION_TAIL, IDENTITY_PROMPT, portraitPlan, attachPortrait, editedImage, portraitPrice, loadPortrait } from '../portraits.mjs';
 const png = 'data:image/png;base64,' + btoa('\x89PNG\r\n\x1a\nfixture');
 const jpg = 'data:image/jpeg;base64,' + btoa('\xff\xd8\xfffixture');
 const catalogue = { data: [
@@ -83,7 +83,9 @@ test('missing source, invalid bytes, offline/missing models and long prompt stop
     h.own.portraits['A.png'].model = 'ref-model'; h.own.editModels[0].offline = true;
     assert.throws(() => portraitPlan(h.own, 'A.png', h.legacy, { prompt: 'a' }), /offline/);
     h.own.editModels[0].offline = false;
-    assert.throws(() => portraitPlan(h.own, 'A.png', h.legacy, { prompt: 'x'.repeat(1490) }), /including/);
+    const fitted = portraitPlan(h.own, 'A.png', h.legacy, { prompt: 'x'.repeat(1490) });
+    assert.ok(fitted.body.prompt.length <= h.own.editModels[0].constraints.promptCharacterLimit);
+    assert.ok(fitted.body.prompt.endsWith(INITIATION_TAIL));
 });
 test('switch or cancel during reference load prevents paid request; concurrent manual call blocked', async () => {
     for (const mode of ['switch', 'cancel']) {
@@ -173,4 +175,47 @@ test('two-reference listed cost includes per-input charges; existing one-referen
     const model={pricing:{inpaint:{usd:.04},inputImages:{included:0,additional:{usd:.01}}}};
     assert.match(portraitPrice(model,{},2),/\$0.06/);assert.match(portraitPrice(model,{},1),/\$0.05/);
     model.pricing.inputImages.included=1;assert.match(portraitPrice(model,{},2),/\$0.05/);
+});
+
+test('every companion self-portrait path keeps the same visual tail exactly once within the model limit', async () => {
+    const h = setup(), b = createBridge(h.deps);
+    for (const mode of ['tool', 'manual', 'tool']) {
+        if (mode === 'manual') await b.generatePortraitManual({ prompt: 'A long scene '.repeat(100) });
+        else { h.next(); await b.portraitTool().action({ prompt: 'At the window' }); }
+    }
+    for (const call of h.calls) {
+        assert.ok(call.body.prompt.startsWith(IDENTITY_PROMPT));
+        assert.ok(call.body.prompt.endsWith(INITIATION_TAIL));
+        assert.equal(call.body.prompt.split(INITIATION_TAIL).length, 2);
+        assert.ok(call.body.prompt.length <= h.own.editModels[0].constraints.promptCharacterLimit);
+    }
+    const already = portraitPlan(h.own, 'A.png', h.legacy, { prompt: `At home\n\n${INITIATION_TAIL}` });
+    assert.equal(already.body.prompt.split(INITIATION_TAIL).length, 2);
+});
+
+test('in-chat self-portrait suppresses caption and queues reaction only after confirmed publication', async () => {
+    const h = setup(), order = [];
+    h.deps.publishImage = async p => {
+        order.push('publish'); h.posted.push(p);
+        p.context.chat.push({ mes: '', extra: { venice_bridge: { via_tool: true } } });
+        return p.context.chat.length - 1;
+    };
+    h.deps.queuePortraitContinuation = p => {
+        order.push('reaction'); assert.equal(p.context.chat[p.messageId].mes, '');
+        assert.equal(p.userMessage.is_user, true); assert.equal(p.isCurrent(), true);
+    };
+    const b = createBridge(h.deps);
+    await b.portraitTool().action({ prompt: 'A scene description which must remain internal' });
+    assert.deepEqual(order, ['publish', 'reaction']); assert.equal(h.posted[0].suppressCaption, true);
+    assert.equal(b.portraitTool().shouldRegister(), false);
+    assert.equal(b.tool().shouldRegister(), false, 'No image tool is offered during the reaction');
+    h.next(); assert.equal(b.portraitTool().shouldRegister(), true);
+    await b.generatePortraitManual({ prompt: 'Manual portrait' });
+    assert.equal(h.posted[1].suppressCaption, false); assert.equal(order.filter(x => x === 'reaction').length, 1);
+});
+
+test('publish failure never schedules a reaction', async () => {
+    const h = setup(); h.deps.publishImage = async () => { throw Error('Save failed'); };
+    h.deps.queuePortraitContinuation = () => assert.fail('No reaction after failed publication');
+    await assert.rejects(createBridge(h.deps).portraitTool().action({ prompt: 'By the window' }), /Save failed/);
 });

@@ -63,6 +63,12 @@ export function createBridge(deps) {
     }
     function ready() { return manualReady() && !!getContext().chatCompletionSettings.function_calling; }
 
+    function turnAvailable() {
+        const c = getContext(), i = c.chat.findLastIndex(m => m.is_user && !m.is_system);
+        return i >= 0 && !attemptedTurns.has(c.chat[i])
+            && !c.chat.slice(i + 1).some(m => m.extra?.venice_bridge?.via_tool && m.extra?.venice_bridge?.via !== 'initiation');
+    }
+
     function adapt(event) {
         if (!getSettings().enabled || !isVeniceConnection(getContext())) return;
         const result = adaptAssistantImages(event.chat);
@@ -129,8 +135,12 @@ export function createBridge(deps) {
             const url = await saveImage(base64, identity.name, extension);
             if (!stillHere()) throw new Error(`The chat changed during generation. The image was saved in the original character's gallery; it was not posted into another chat.`);
             if (controller.signal.aborted) throw new Error('Generation was stopped. The returned image was saved to the character gallery.');
-            const messageId = await publishImage({ url, prompt: portrait ? args.prompt.trim() : body.prompt, context: c, isCurrent: stillHere, manual, portrait,
+            const react = portrait === true && !manual && !allowance && typeof deps.queuePortraitContinuation === 'function';
+            const messageId = await publishImage({ suppressCaption: react, url, prompt: portrait ? args.prompt.trim() : body.prompt, context: c, isCurrent: stillHere, manual, portrait,
                 via: allowance ? 'initiation' : undefined, attemptId: allowance?.attemptId, onPublished: allowance?.onPublished });
+            if (react && stillHere() && !controller.signal.aborted) {
+                deps.queuePortraitContinuation({ context: c, messageId, userMessage, isCurrent: stillHere });
+            }
             return JSON.stringify({
                 status: 'created', image_url: url, message_id: messageId, ...(portrait ? { reference_used: true } : {}),
                 instruction: 'The image has been posted in this chat. Inspect the accompanying image input before describing its actual details. Do not call this tool again until the user sends another message.',
@@ -155,7 +165,7 @@ export function createBridge(deps) {
                     negative_prompt: { type: 'string', description: 'Optional things to exclude; up to 1500 characters.' },
                 }, required: ['prompt'], additionalProperties: false,
             },
-            shouldRegister: ready, action: args => generate(args),
+            shouldRegister: () => ready() && turnAvailable(), action: args => generate(args),
             formatMessage: () => 'Creating a picture with Venice…',
         };
     }
@@ -168,7 +178,7 @@ export function createBridge(deps) {
         return { name: PORTRAIT_TOOL, displayName: 'Create a self-portrait',
             description: 'Create and share a new picture of yourself using your fixed reference portrait, attached automatically. Describe the new scene, clothes, pose and expression; preserve your identity. Use this for pictures of yourself instead of VeniceCreateImage. Only your own configured reference can be used. One image attempt per user turn across both image tools. After success or failure, reply in words. Inspect the returned image before describing its actual details.',
             parameters: { type: 'object', properties: { prompt: { type: 'string', description: 'New scene, pose, clothes and expression, up to 1500 characters. The original face reference is attached automatically.' } }, required: ['prompt'], additionalProperties: false },
-            shouldRegister: portraitReady, action: args => generate(args, false, true), formatMessage: () => 'Creating a picture using my reference portrait…' };
+            shouldRegister: () => portraitReady() && turnAvailable(), action: args => generate(args, false, true), formatMessage: () => 'Creating a picture using my reference portrait…' };
     }
 
     function userPortraitReady() {
@@ -182,7 +192,7 @@ export function createBridge(deps) {
                 prompt: { type: 'string', description: 'Scene, pose, clothing and expression, up to 1500 characters.' },
                 include_character: { type: 'boolean', description: 'True to include the current companion with the human user; false for the human user alone.' },
             }, required: ['prompt'], additionalProperties: false },
-            shouldRegister: userPortraitReady,
+            shouldRegister: () => userPortraitReady() && turnAvailable(),
             action: args => generate(args, false, args?.include_character === true ? 'together' : 'user'),
             formatMessage: () => 'Creating a picture using the saved personal reference…' };
     }

@@ -77,3 +77,10 @@ test('ST stop handler delegates to one shared coordinator, not a second cancel',
     coordinator(); h.b.handleGenerationStopped(); h.b.handleGenerationStopped();
     assert.equal(stops, 3); assert.equal(cancels, 1); h.b.releaseInitiation('timer');
 });
+
+ test('timer portraits do not queue in-chat reactions and contain one visual tail', async () => {
+    const h = setup(); h.deps.queuePortraitContinuation = () => assert.fail('Timer photos stay image-only');
+    const t = h.allow(); await h.b.generateInitiation(t, 'At a window'); h.b.endInitiation(t);
+    assert.equal(h.posts[0].suppressCaption, false);
+    assert.equal(h.calls[0].prompt.split(INITIATION_TAIL).length, 2);
+});

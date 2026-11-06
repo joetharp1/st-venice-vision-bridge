@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.5.0 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.6.1 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -186,3 +186,16 @@ Companions with bridge image generation enabled also get `VeniceCreateUserPortra
 Verified against Venice’s official `veniceai/skills` image-edit documentation: `combineImages`, `maxInputImages`, ordered `images` arrays, `modelId` for multi-edit and per-input pricing. Both images are loaded locally as bytes; private ST URLs and API keys are not inserted into the prompt. No third-party reference URLs are accepted.
 
 Validation: 62 unit/host tests, mobile browser checks for both reference panels, ordered two-reference requests, missing-reference and unsupported-model guards, shared attempt limits, save rollback, switching companions, and the previous orientation tests. Provider calls are mocked; check one generation after installing.
+
+
+## 0.6.1 — in-chat portrait reactions and concise image messages
+
+New image messages contain `Photo.` instead of the requested description. Media titles are also `Photo.` so the prompt is not copied into the message through image metadata. For an in-chat self-portrait with a queued reaction, the message body is empty: the photo and the companion's own reply are shown. Original tool arguments remain internal tool-call data; character cards and style instructions are unchanged. Existing messages are not rewritten.
+
+After successful self-portrait publication, the bridge queues one same-chat normal generation with `automatic_trigger: true`. It waits until the current generation finishes. ST 1.19.0 already follows ordinary tool results with a native normal generation; when that starts, it satisfies the queued reaction and the bridge does not duplicate it. Stop, chat switch, a new user turn, a draft, removal of the photo or expiration discards the queue. A failed follow-up reports a warning without retrying. Manual image generation and initiation photos do not queue reactions. Reloading does not replay old photos.
+
+All image tools are withheld after their shared one-attempt-per-user-turn limit is used, including during the reaction, to prevent another image call loop. Tool invocation guards still reject unsolicited repeat calls.
+
+Every companion self-portrait request now uses the exact existing initiation visual tail and folded exclusions. The identity prefix and fixed tail are reserved before the scene is truncated to the selected model's character limit. Initiations keep one copy of the tail. Human-user and two-person portraits retain their separate identity instructions rather than imposing the companion's skin specification on the human reference.
+
+Update this extension normally and reload; confirm **0.6.1**. No keys, references or settings need re-entering. Validation includes source-contract checks against ST 1.19.0, host caption/publication/continuation checks, exactly-once scheduling and native-follow-up deduplication, cancellation, prompt limits and tail coverage. Provider calls in tests are mocked; the next new self-portrait verifies the live model's response.

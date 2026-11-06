@@ -40,7 +40,15 @@ export function portraitPlan(own, key, legacy, args) {
     if (!model) throw new Error('Choose a reference image model for this character. Refresh editing models if needed.');
     if (model.offline) throw new Error('The selected reference image model is offline. Choose another model.');
     if (typeof args?.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 1500) throw new Error('Describe the new portrait in 1–1500 characters.');
-    const prompt = IDENTITY_PROMPT + args.prompt.trim();
+    let scene = args.prompt.trim();
+    // Initiation args already carry this exact suffix. Keep a single copy.
+    if (key !== USER_PORTRAIT_KEY) {
+        if (scene.endsWith(INITIATION_TAIL)) scene = scene.slice(0, -INITIATION_TAIL.length).trimEnd();
+        const room = model.constraints.promptCharacterLimit - IDENTITY_PROMPT.length - INITIATION_TAIL.length - 2;
+        if (!Number.isFinite(room) || room < 32) throw new Error('Model prompt limit cannot hold the reference instructions and fixed exclusions.');
+        scene = scene.slice(0, room).trimEnd() + '\n\n' + INITIATION_TAIL;
+    }
+    const prompt = IDENTITY_PROMPT + scene;
     if (prompt.length > model.constraints.promptCharacterLimit) throw new Error(`This model allows ${model.constraints.promptCharacterLimit} characters including the face-preservation instruction. Shorten the scene description.`);
     const options = modelOptions(model, saved.options || {});
     // Multi-edit accepts one reference and exposes quality; single-edit rejects quality.

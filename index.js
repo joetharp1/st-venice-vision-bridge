@@ -1,5 +1,7 @@
 import { extension_settings, getContext } from '../../../extensions.js';
-import { eventSource, event_types, saveSettingsDebounced, saveSettings, getRequestHeaders } from '../../../../script.js';
+import { eventSource, event_types, saveSettingsDebounced, saveSettings, getRequestHeaders, Generate, isGenerating } from '../../../../script.js';
+import { hasPendingFileAttachment } from '../../../chats.js';
+import { createPortraitContinuation } from './continuation.mjs';
 import { saveBase64AsFile } from '../../../utils.js';
 import { getMessageTimeStamp } from '../../../RossAscends-mods.js';
 import { MEDIA_DISPLAY, MEDIA_SOURCE, MEDIA_TYPE } from '../../../constants.js';
@@ -38,18 +40,29 @@ async function persistPortraitSettings() {
     }
 }
 let lastMoved = 0;
+const portraitContinuation = createPortraitContinuation({
+    getContext, isGenerating,
+    hasDraft: () => !!String(document.getElementById('send_textarea')?.value || '') || hasPendingFileAttachment(),
+    enabled: () => settings().enabled && settings().characters?.[characterKey(getContext())] && isVeniceConnection(getContext()),
+    generate: (type, options) => Generate(type, options),
+    onError: error => {
+        console.warn('[Venice Image Bridge] Photo reaction failed:', error.message);
+        toastr.warning('Photo saved, but the follow-up reply failed. You can reply normally; no extra image was generated.');
+    },
+});
 const bridge = createBridge({
     getContext, getSettings: settings,
     getGeneratorSettings: () => extension_settings['st-venice-image'],
     fetch: (...args) => fetch(...args),
     saveImage, loadReference,
-    publishImage: async ({ url, prompt, context, isCurrent, manual, portrait, via, attemptId, onPublished }) => {
+    queuePortraitContinuation: p => portraitContinuation.enqueue(p),
+    publishImage: async ({ url, prompt, context, isCurrent, manual, portrait, via, attemptId, onPublished, suppressCaption }) => {
         const message = {
             name: context.name2, is_user: false, is_system: false,
             send_date: getMessageTimeStamp(),
-            mes: via === 'initiation' ? '' : `Generated image. Requested description: ${prompt}`,
+            mes: via === 'initiation' || suppressCaption ? '' : 'Photo.',
             extra: {
-                media: [{ url, type: MEDIA_TYPE.IMAGE, title: prompt, generation_type: 'venice', source: MEDIA_SOURCE.GENERATED }],
+                media: [{ url, type: MEDIA_TYPE.IMAGE, title: 'Photo.', generation_type: 'venice', source: MEDIA_SOURCE.GENERATED }],
                 media_display: MEDIA_DISPLAY.GALLERY, media_index: 0, inline_image: false,
                 venice_bridge: { version: 1, via_tool: !manual && via !== 'initiation', via, reference_used: !!portrait },
                 ...(via === 'initiation' ? { ava_initiation: { attemptId, type: 'photo', timestamp: Date.now() } } : {}),
@@ -108,7 +121,7 @@ jQuery(() => {
             <div id="venice_bridge_refresh" class="menu_button">Refresh status</div>
             <p id="venice_bridge_status"></p>
             <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div><div id="venice_bridge_user_portrait"></div>
-            <small>Version 0.6.0 · Built for SillyTavern 1.19.0</small>
+            <small>Version 0.6.1 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -126,8 +139,11 @@ jQuery(() => {
         }
         bridge.adapt(event);
     });
-    eventSource.on(event_types.CHAT_CHANGED, refresh);
-    eventSource.on(event_types.GENERATION_STOPPED, () => bridge.handleGenerationStopped());
+    eventSource.on(event_types.CHAT_CHANGED, () => { portraitContinuation.cancel(); refresh(); });
+    eventSource.on(event_types.MESSAGE_SENT, () => portraitContinuation.cancel());
+    eventSource.on(event_types.GENERATION_STARTED, (...args) => portraitContinuation.generationStarted(...args));
+    eventSource.on(event_types.GENERATION_ENDED, () => portraitContinuation.generationEnded());
+    eventSource.on(event_types.GENERATION_STOPPED, () => { portraitContinuation.cancel(); bridge.handleGenerationStopped(); });
     getContext().registerFunctionTool(bridge.tool());
     getContext().registerFunctionTool(bridge.portraitTool());
     getContext().registerFunctionTool(bridge.userPortraitTool());
