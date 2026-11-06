@@ -36,15 +36,16 @@ const bridge = createBridge({
     getGeneratorSettings: () => extension_settings['st-venice-image'],
     fetch: (...args) => fetch(...args),
     saveImage, loadReference,
-    publishImage: async ({ url, prompt, context, isCurrent, manual, portrait }) => {
+    publishImage: async ({ url, prompt, context, isCurrent, manual, portrait, via, attemptId, onPublished }) => {
         const message = {
             name: context.name2, is_user: false, is_system: false,
             send_date: getMessageTimeStamp(),
-            mes: `Generated image. Requested description: ${prompt}`,
+            mes: via === 'initiation' ? '' : `Generated image. Requested description: ${prompt}`,
             extra: {
                 media: [{ url, type: MEDIA_TYPE.IMAGE, title: prompt, generation_type: 'venice', source: MEDIA_SOURCE.GENERATED }],
                 media_display: MEDIA_DISPLAY.GALLERY, media_index: 0, inline_image: false,
-                venice_bridge: { version: 1, via_tool: !manual, reference_used: !!portrait },
+                venice_bridge: { version: 1, via_tool: !manual && via !== 'initiation', via, reference_used: !!portrait },
+                ...(via === 'initiation' ? { ava_initiation: { attemptId, type: 'photo', timestamp: Date.now() } } : {}),
             },
         };
         if (!isCurrent()) throw new Error('Chat changed before the image could be posted. It is saved in the gallery.');
@@ -52,9 +53,11 @@ const bridge = createBridge({
         const id = context.chat.length - 1;
         // Match ST's built-in generator: render, emit message events, then save.
         context.addOneMessage(message);
+        if (onPublished) onPublished(id, message);
         await eventSource.emit(event_types.MESSAGE_RECEIVED, id, 'extension');
         await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, id, 'extension');
         if (isCurrent()) await context.saveChat();
+        return id;
     },
     onAdapt: ({ imagesMoved, dryRun }) => {
         if (!dryRun) {
@@ -63,6 +66,9 @@ const bridge = createBridge({
         }
     },
 });
+// Publish the already-created singleton; importing runtime.mjs must never create
+// a second limiter/controller. No API key or mutable settings are exposed here.
+globalThis[Symbol.for('ava.veniceBridge')] = bridge;
 
 function refresh() {
     const c = getContext(), key = characterKey(c);
@@ -95,7 +101,7 @@ jQuery(() => {
             <div id="venice_bridge_refresh" class="menu_button">Refresh status</div>
             <p id="venice_bridge_status"></p>
             <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div>
-            <small>Version 0.4.2 · Built for SillyTavern 1.19.0</small>
+            <small>Version 0.5.0 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -108,7 +114,7 @@ jQuery(() => {
     $('#venice_bridge_refresh').on('click', refresh);
     eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, event => bridge.adapt(event));
     eventSource.on(event_types.CHAT_CHANGED, refresh);
-    eventSource.on(event_types.GENERATION_STOPPED, () => bridge.cancel());
+    eventSource.on(event_types.GENERATION_STOPPED, () => bridge.handleGenerationStopped());
     getContext().registerFunctionTool(bridge.tool());
     getContext().registerFunctionTool(bridge.portraitTool());
     mountModels({ getSettings: settings, getGeneratorSettings: () => extension_settings['st-venice-image'],
@@ -125,5 +131,5 @@ jQuery(() => {
     album = mountAlbum({ onReference: portraits.useAlbumPortrait, getContext, getSettings: settings, extension_settings, eventSource, event_types,
         saveSettings, saveSettingsDebounced, getRequestHeaders, getMessageTimeStamp, MEDIA_TYPE, MEDIA_SOURCE, MEDIA_DISPLAY });
     refresh();
-    console.info('[Venice Image Bridge] 0.4.2 loaded');
+    console.info('[Venice Image Bridge] 0.5.0 loaded');
 });

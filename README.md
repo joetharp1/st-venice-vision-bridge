@@ -1,6 +1,12 @@
-# Venice Image Bridge 0.4.2 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.5.0 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
+
+## Ava Initiation integration (0.5.0)
+
+Update this extension through SillyTavern's usual Update button, then reload. [Ava Initiation](https://github.com/joetharp1/ava-initiation) can use the configured fixed reference portrait through a short-lived, one-use allowance. It bypasses both normal user-turn image limits for that initiation only; timer images do not consume the next real user turn. Identity, model prompt limits and the existing Safe Mode setting are preserved. Timer images have no caption. Ava owns the two-photo daily limit and daily credit cap.
+
+Normal user-requested image generation keeps its existing path. No API key or reference portrait needs re-entering.
 
 ## What it does
 

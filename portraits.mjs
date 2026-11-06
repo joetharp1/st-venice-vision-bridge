@@ -4,6 +4,32 @@ import { modelOptions } from './models.mjs';
 export const PORTRAIT_TOOL = 'VeniceCreateSelfPortrait';
 export const IDENTITY_PROMPT = 'Use the person in the reference image as the same character in this new picture. Preserve their facial identity, apparent adult age, eye colour and hair characteristics. Follow the requested scene, pose, clothing and expression; do not copy the original background unless requested.\n\n';
 
+// Editing endpoints have no negative_prompt field. Keep these exclusions in the
+// positive tail, after the scene; portraitPlan alone supplies the identity prefix.
+export const INITIATION_TAIL = 'Pale skin, cool natural colour balance, visible freckles, matte skin. No tan, no cyan, no liner, no gloss.';
+export function initiationPortraitArgs(own, key, scene) {
+    const ref = own.portraits?.[key];
+    const model = own.editModels?.find(m => m.id === ref?.model && !m.offline);
+    if (!model || !ref?.url) throw new Error('A saved reference and an available editing model are required.');
+    const limit = Math.min(1500, model.constraints.promptCharacterLimit - IDENTITY_PROMPT.length);
+    const room = limit - INITIATION_TAIL.length - 2;
+    if (!Number.isFinite(room) || room < 32) throw new Error('Model prompt limit cannot hold the reference instructions and fixed exclusions.');
+    const text = String(scene || '').trim();
+    if (!text) throw new Error('An initiation scene is required.');
+    return { prompt: text.slice(0, room).trimEnd() + '\n\n' + INITIATION_TAIL };
+}
+
+export function referenceCostUsd(own, key) {
+    const ref = own.portraits?.[key];
+    const model = own.editModels?.find(m => m.id === ref?.model && !m.offline);
+    if (!model) return null;
+    const opts = modelOptions(model, ref.options || {}), p = model.pricing || {};
+    const base = p.quality?.[opts.resolution]?.[opts.quality]?.usd
+        ?? p.resolutions?.[opts.resolution]?.usd ?? p.inpaint?.usd;
+    const extra = p.inputImages?.included === 0 ? p.inputImages?.additional?.usd : 0;
+    return Number.isFinite(base) && base >= 0 && Number.isFinite(extra) && extra >= 0 ? base + extra : null;
+}
+
 export function portraitPlan(own, key, legacy, args) {
     const saved = own.portraits?.[key];
     if (!saved?.url) throw new Error('Save a reference portrait for this character in Venice Image Bridge first.');

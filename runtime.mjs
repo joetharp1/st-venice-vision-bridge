@@ -1,6 +1,6 @@
 import { adaptAssistantImages, characterKey, imageRequestBody, isVeniceConnection, TOOL_NAME } from './core.mjs';
 import { selectedGeneratorSettings } from './models.mjs';
-import { portraitPlan, attachPortrait, editedImage, PORTRAIT_TOOL } from './portraits.mjs';
+import { portraitPlan, attachPortrait, editedImage, PORTRAIT_TOOL, initiationPortraitArgs, referenceCostUsd } from './portraits.mjs';
 
 export function createBridge(deps) {
     const { getContext, getSettings, getGeneratorSettings, fetch: request, saveImage, publishImage } = deps;
@@ -9,6 +9,49 @@ export function createBridge(deps) {
     // One attempted tool generation per user turn, including provider errors.
     // Prevents model retries from making repeated charged calls in the same reply.
     const attemptedTurns = new WeakSet();
+    let initiation = null;
+    let initiationOwner = null;
+    const allowances = new WeakSet();
+
+    function validAllowance(token, consume = false) {
+        const c = getContext();
+        if (!token || token !== initiation || !allowances.has(token) || token.cancelled
+            || Date.now() >= token.expiresAt || characterKey(c) !== token.avatar
+            || c.chatId !== token.chatId || c.chat !== token.chat || !token.isCurrent()) {
+            throw new Error('Initiation image allowance expired, cancelled or belongs to another chat.');
+        }
+        if (consume) {
+            if (token.consumed) throw new Error('This initiation has already attempted its one image.');
+            token.consumed = true;
+        }
+        return token;
+    }
+
+    function beginInitiation(options) {
+        if (!manualReady() || busy || initiation) throw new Error('Image bridge is not ready for an initiation.');
+        if (initiationOwner && (initiationOwner.cancelled || initiationOwner.attemptId !== options.attemptId)) throw new Error('Another or cancelled initiation owns the bridge.');
+        const c = getContext();
+        if (options.avatar !== characterKey(c) || options.chatId !== c.chatId) throw new Error('Initiation chat changed.');
+        const token = { ...options, chat: c.chat, consumed: false, cancelled: false,
+            expiresAt: Math.min(Date.now() + 2 * 60000, options.deadline) };
+        allowances.add(token); initiation = token;
+        try { validAllowance(token); }
+        catch (error) { initiation = null; allowances.delete(token); throw error; }
+        return token;
+    }
+
+    function cancel(attemptId) {
+        if (attemptId && initiation?.attemptId !== attemptId && initiationOwner?.attemptId !== attemptId) return;
+        if (initiationOwner) {
+            if (initiationOwner.cancelled) return;
+            initiationOwner.cancelled = true;
+        }
+        if (initiation) {
+            if (initiation.cancelled) return;
+            initiation.cancelled = true;
+        }
+        controller?.abort();
+    }
 
     function manualReady() {
         const c = getContext();
@@ -26,27 +69,32 @@ export function createBridge(deps) {
         deps.onAdapt?.({ ...result, messages: undefined, dryRun: !!event.dryRun });
     }
 
-    async function generate(args, manual = false, portrait = false) {
-        if (!(manual ? manualReady() : ready())) throw new Error('Venice Image Bridge is not enabled for this character, or inline images/function calling is off.');
+    async function generate(args, manual = false, portrait = false, allowance = null) {
+        if ((initiation || initiationOwner) && !allowance) throw new Error('An initiation owns the image bridge. Wait for it to finish.');
+        if (allowance) validAllowance(allowance);
+        if (!((manual || allowance) ? manualReady() : ready())) throw new Error('Venice Image Bridge is not enabled for this character, or inline images/function calling is off.');
         if (busy) throw new Error('An image is already being generated. Wait for it to finish.');
         const c = getContext();
         const userIndex = c.chat.findLastIndex(m => m.is_user && !m.is_system);
         const userMessage = c.chat[userIndex];
-        if (!manual && !userMessage) throw new Error('Wait for a user message before generating a picture.');
-        if (!manual && (attemptedTurns.has(userMessage) || c.chat.slice(userIndex + 1).some(m => m.extra?.venice_bridge?.via_tool))) {
+        if (!manual && !allowance && !userMessage) throw new Error('Wait for a user message before generating a picture.');
+        if (!manual && !allowance && (attemptedTurns.has(userMessage) || c.chat.slice(userIndex + 1).some(m => m.extra?.venice_bridge?.via_tool && m.extra?.venice_bridge?.via !== 'initiation'))) {
             throw new Error('One image attempt is allowed per user turn. Reply with the result; wait for another user message before generating again.');
         }
         const legacy = { ...getGeneratorSettings() };
         const settings = portrait ? legacy : selectedGeneratorSettings(legacy, getSettings());
         const plan = portrait ? portraitPlan(getSettings(), characterKey(c), legacy, args) : null;
+        const initiationCost = allowance ? referenceCostUsd(getSettings(), characterKey(c)) : null;
         let body = portrait ? plan.body : imageRequestBody(settings, args);
         const identity = { chat: c.chat, chatId: c.chatId, characterId: c.characterId, key: characterKey(c), name: c.name2 };
         const stillHere = () => {
             const now = getContext();
-            return now.chat === identity.chat && now.chatId === identity.chatId
+            return (!allowance || (!allowance.cancelled && Date.now() < allowance.expiresAt && allowance.isCurrent()))
+                && now.chat === identity.chat && now.chatId === identity.chatId
                 && now.characterId === identity.characterId && characterKey(now) === identity.key;
         };
-        if (!manual) attemptedTurns.add(userMessage);
+        if (allowance) validAllowance(allowance, true);
+        else if (!manual) attemptedTurns.add(userMessage);
         busy = true;
         controller = new AbortController();
         const timeout = setTimeout(() => controller?.abort(), 120000);
@@ -55,6 +103,13 @@ export function createBridge(deps) {
                 const dataUrl = await deps.loadReference(plan.url, controller.signal);
                 if (!stillHere() || controller.signal.aborted) throw new Error('Chat changed or generation stopped before the reference was sent. No image request was made.');
                 body = attachPortrait(plan, dataUrl);
+            }
+            if (allowance) {
+                validAllowance(allowance);
+                // Synchronous budget reservation under the caller's Web Lock,
+                // immediately before the potentially charged provider request.
+                allowance.beforeRequest(initiationCost);
+                validAllowance(allowance);
             }
             const response = await request(portrait ? plan.endpoint : 'https://api.venice.ai/api/v1/image/generate', {
                 method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.api_key}` },
@@ -67,9 +122,10 @@ export function createBridge(deps) {
             const url = await saveImage(base64, identity.name, extension);
             if (!stillHere()) throw new Error(`The chat changed during generation. The image was saved in the original character's gallery; it was not posted into another chat.`);
             if (controller.signal.aborted) throw new Error('Generation was stopped. The returned image was saved to the character gallery.');
-            await publishImage({ url, prompt: portrait ? args.prompt.trim() : body.prompt, context: c, isCurrent: stillHere, manual, portrait });
+            const messageId = await publishImage({ url, prompt: portrait ? args.prompt.trim() : body.prompt, context: c, isCurrent: stillHere, manual, portrait,
+                via: allowance ? 'initiation' : undefined, attemptId: allowance?.attemptId, onPublished: allowance?.onPublished });
             return JSON.stringify({
-                status: 'created', image_url: url, ...(portrait ? { reference_used: true } : {}),
+                status: 'created', image_url: url, message_id: messageId, ...(portrait ? { reference_used: true } : {}),
                 instruction: 'The image has been posted in this chat. Inspect the accompanying image input before describing its actual details. Do not call this tool again until the user sends another message.',
             });
         } catch (error) {
@@ -108,5 +164,17 @@ export function createBridge(deps) {
             shouldRegister: portraitReady, action: args => generate(args, false, true), formatMessage: () => 'Creating a picture using my reference portrait…' };
     }
 
-    return { portraitReady, portraitTool, generatePortraitManual: args => generate(args, true, true), adapt, generate: args => generate(args), generateManual: args => generate(args, true), tool, ready, manualReady, cancel: () => controller?.abort(), get busy() { return busy; } };
+    return { portraitReady, portraitTool, generatePortraitManual: args => generate(args, true, true), adapt, generate: args => generate(args), generateManual: args => generate(args, true), tool, ready, manualReady, cancel,
+        initiationVersion: 1, beginInitiation,
+        claimInitiation: owner => {
+            if (busy || initiationOwner) throw new Error('Image bridge already has an owner.');
+            initiationOwner = { ...owner, cancelled: false };
+        },
+        releaseInitiation: id => { if (initiationOwner?.attemptId === id) initiationOwner = null; },
+        initiationStatus: () => ({ ready: manualReady() && !busy && !initiation && !initiationOwner,
+            costUsd: referenceCostUsd(getSettings(), characterKey(getContext())) }),
+        generateInitiation: (token, scene) => generate(initiationPortraitArgs(getSettings(), token.avatar, scene), false, true, token),
+        endInitiation: token => { if (token === initiation) { allowances.delete(token); initiation = null; } },
+        handleGenerationStopped: () => initiationOwner ? initiationOwner.onStop?.() : initiation ? initiation.onStop?.() : cancel(),
+        get busy() { return busy; } };
 }
