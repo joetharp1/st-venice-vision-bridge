@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.6.3 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.6.4 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -30,7 +30,7 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.6.3**. Avoid keeping another old SillyTavern tab open while changing settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.6.4**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
@@ -224,3 +224,13 @@ The observer calls the original fetch with the original arguments and returns th
 A reported HTTP status is the browser-to-SillyTavern status, not necessarily Venice's status. If SillyTavern exposes only “Bad Request”, the observer cannot recover a hidden upstream body. Structural warnings are diagnostic clues, not proof that Venice rejected that structure. No claim of a live fix is made.
 
 Validation: all 89 unit/host/source-contract tests passed. A real Chromium test passed JSON and HTTP-200 SSE error capture, exact request/response preservation, private text exclusion, clear/reload and mobile report layout at 320/393/709px. All provider responses were synthetic; the live rejection remains to be captured.
+
+## 0.6.4 — omit empty picture-message shells from outgoing requests
+
+A live 0.6.3 report showed a zero-text, zero-image assistant array at index 106 immediately before the adapted image. The captionless self-portrait path reproduces this shape: removing its image leaves an empty text part. The adapter now omits only empty assistant shells it creates while moving image parts. It retains all image bytes, existing captions, tool calls/results, other metadata and unknown content parts. Pre-existing empty messages that had no image are unchanged. Stored chat and pictures are never edited.
+
+The diagnostic now flags empty text-part arrays and preserves exact standard error wording such as “Bad Request” even when “Request” occurs in the chat. No sampling, tool registration, instruction, image-count or continuation changes are included.
+
+Update, reload and retry the existing message once. No photo regeneration or history deletion is required. This repairs a reproduced request-shape defect; the generic live “Bad Request” response does not establish that it was the only cause. Capture a new report if the retry still fails.
+
+Validation: 91 unit/host/source-contract tests passed, including the captionless photo → tool result → follow-up request shape, image-byte preservation and stored-chat immutability. The real Chromium diagnostic/mobile checks also passed. Live acceptance is pending.

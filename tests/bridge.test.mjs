@@ -25,11 +25,39 @@ test('reproduces the logged failure: old assistant picture moved, fresh user pic
     assert.equal(adaptAssistantImages(result.messages).imagesMoved, 0);
 });
 
-test('multiple pictures, empty assistant text, tool metadata and image detail survive', () => {
-    const result = adaptAssistantImages([{ role: 'assistant', content: [picture('a'), picture('b')], name: 'TestCharacter' }]);
-    assert.equal(result.messages[0].content, '');
-    assert.equal(result.messages[0].name, 'TestCharacter');
-    assert.deepEqual(result.messages[1].content.slice(1), [picture('a'), picture('b')]);
+test('captionless picture leaves no empty assistant shell; all image bytes and detail survive', () => {
+    for (const caption of [[], [text('')], [text('  \n')]]) {
+        const input = [{ role: 'assistant', content: [...caption, picture('a'), picture('b')], name: 'TestCharacter' }];
+        const before = structuredClone(input), result = adaptAssistantImages(input);
+        assert.equal(result.messages.length, 1);
+        assert.equal(result.messages[0].role, 'user');
+        assert.deepEqual(result.messages[0].content.slice(1), [picture('a'), picture('b')]);
+        assert.deepEqual(input, before);
+        assert.deepEqual(adaptAssistantImages(result.messages).messages, result.messages);
+    }
+});
+
+test('captionless follow-up preserves call/result pairing, ordinary text and metadata', () => {
+    const calls = [{ id: 'portrait-call', type: 'function', function: { name: 'VeniceCreateSelfPortrait', arguments: '{}' } }];
+    const input = [
+        { role: 'assistant', content: 'Here is the picture.' },
+        { role: 'assistant', content: [text(''), picture('new-photo')] },
+        { role: 'assistant', tool_calls: calls },
+        { role: 'tool', tool_call_id: 'portrait-call', content: '{"status":"created"}' },
+        { role: 'user', content: 'Hello' },
+    ];
+    const before = structuredClone(input), result = adaptAssistantImages(input);
+    assert.deepEqual(result.messages.map(m => m.role), ['assistant', 'user', 'assistant', 'tool', 'user']);
+    assert.equal(result.messages[2], input[2]); assert.equal(result.messages[3], input[3]);
+    assert.deepEqual(input, before);
+    for (const extra of [{ tool_calls: calls }, { function_call: { name: 'old_tool', arguments: '{}' } }, { reasoning_content: 'Retain metadata' }, { refusal: 'Retain refusal' }]) {
+        const message = { role: 'assistant', content: [text(''), picture()], ...extra };
+        assert.equal(adaptAssistantImages([message]).messages[0].role, 'assistant');
+    }
+    const preExisting = [{ role: 'assistant', content: '' }, { role: 'assistant', content: [text('')] }];
+    assert.deepEqual(adaptAssistantImages(preExisting).messages, preExisting);
+    const unknownPart = { type: 'audio', data: 'preserve' };
+    assert.deepEqual(adaptAssistantImages([{ role: 'assistant', content: [unknownPart, picture()] }]).messages[0].content, [unknownPart]);
 });
 
 test('never inserts pictures between assistant tool calls and multiple tool results', () => {

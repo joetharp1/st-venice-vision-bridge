@@ -147,7 +147,7 @@ jQuery(() => {
               </div>
             </div>
             <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div><div id="venice_bridge_user_portrait"></div>
-            <small>Version 0.6.3 · Built for SillyTavern 1.19.0</small>
+            <small>Version 0.6.4 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);

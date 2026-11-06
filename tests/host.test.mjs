@@ -83,6 +83,13 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
     await tools.get('VeniceCreateSelfPortrait').action({ prompt: 'This entire requested description belongs only in the image request and never in the caption or media title' });
     assert.equal(context.chat.at(-1).mes, '');
     assert.equal(context.chat.at(-1).extra.media[0].title, 'Photo.');
+    const savedPortrait = structuredClone(context.chat.at(-1));
+    const captionless = { chat: [{ role: 'assistant', content: [{ type: 'text', text: '' }, { type: 'image_url', image_url: { url: savedPortrait.extra.media[0].url } }] }] };
+    await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, captionless);
+    assert.equal(captionless.chat.length, 1);
+    assert.equal(captionless.chat[0].role, 'user');
+    assert.equal(captionless.chat[0].content[1].image_url.url, savedPortrait.extra.media[0].url);
+    assert.equal(JSON.stringify(context.chat.at(-1)), JSON.stringify(savedPortrait));
     assert.equal(saved, 2); assert.equal(followups, 0);
     await eventSource.emit(event_types.GENERATION_ENDED);
     await continuation.flush(); await continuation.flush();

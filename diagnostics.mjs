@@ -18,7 +18,9 @@ export function describeRequest(data, bytes) {
             if (!pending.delete(m.tool_call_id)) issues.push({ index, issue: 'unmatched tool result' });
         }
         for (const call of calls) if (call?.id) pending.add(call.id);
-        if (!textChars && !parts.length && !calls.length && !m.function_call) issues.push({ index, issue: 'empty content without a tool call' });
+        const emptyContent = m.content == null || (typeof m.content === 'string' ? !m.content.trim()
+            : Array.isArray(m.content) && parts.every(p => p?.type === 'text' && typeof p.text === 'string' && !p.text.trim()));
+        if (emptyContent && !calls.length && !m.function_call) issues.push({ index, issue: 'empty content without a tool call' });
         if (m.role === 'assistant' && imageCount) issues.push({ index, issue: 'assistant image part' });
         images += imageCount;
         rows.push({ index, role: safeName(m.role), textChars, images: imageCount, toolCalls: calls.length, contentType: Array.isArray(m.content) ? 'array' : m.content === null ? 'null' : typeof m.content });
@@ -48,6 +50,9 @@ function errorSanitizer(data) {
     for (const [key, value] of Object.entries(data)) if (/key|token|password|authorization|custom_include_body/i.test(key)) collect(value);
     return value => {
         if (typeof value !== 'string') return undefined;
+        // Standard complete status strings contain no user content. Keep them
+        // readable even when a common word also occurs in the conversation.
+        if (['Bad Request', 'Invalid request parameters', 'Unauthorized', 'Forbidden', 'Request Entity Too Large', 'Payload Too Large', 'Internal Server Error'].includes(value)) return value;
         let text = value;
         text = text.replace(/data:[^\s"'<>]+/gi, '[image omitted]').replace(/https?:\/\/[^\s"'<>]+/gi, '[URL omitted]')
             .replace(/Bearer\s+[^\s"']+/gi, '[credential omitted]').replace(/\bsk-[\w-]+/g, '[credential omitted]');
@@ -132,7 +137,7 @@ export function createRequestDiagnostics({ fetch: originalFetch, origin, enabled
     const api = {
         arm() { epoch++; records = []; remaining = 3; until = now() + 300000; notify(); },
         clear() { epoch++; records = []; remaining = 0; notify(); },
-        report() { return JSON.stringify({ bridge: '0.6.3', captureRemaining: now() <= until ? remaining : 0, requests: records }, null, 2); },
+        report() { return JSON.stringify({ bridge: '0.6.4', captureRemaining: now() <= until ? remaining : 0, requests: records }, null, 2); },
         async fetch(input, init) {
             let record, clean, captureEpoch;
             try {

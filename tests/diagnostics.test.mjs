@@ -90,3 +90,11 @@ test('oversized response is not included; report remains bounded', async () => {
     const response = await d.fetch(path, request()); assert.equal(await response.text(), body); await wait();
     assert.match(latest(d).observation, /size limit/); assert.ok(!d.report().includes('SECRET'));
 });
+
+test('flags the live empty-text array and preserves standard Bad Request wording', async () => {
+    const messages = [{ role: 'assistant', content: [{ type: 'text', text: '' }] }, { role: 'user', content: 'Request help please' }];
+    assert.deepEqual(describeRequest({ messages }, 0).structuralWarnings, [{ index: 0, issue: 'empty content without a tool call' }]);
+    const d = createRequestDiagnostics({ origin, enabled: () => true, fetch: async () => new Response('{"error":{"message":"Bad Request"}}') });
+    d.arm(); const response = await d.fetch(path, request({ messages })); await response.text(); await wait();
+    assert.equal(latest(d).error.error.message, 'Bad Request');
+});

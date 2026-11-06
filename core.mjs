@@ -38,8 +38,13 @@ export function adaptAssistantImages(messages) {
                 imagesMoved += images.length;
             }
         }
-        // Preserve empty assistant records too: they may carry tool metadata.
-        output.push(current);
+        // Moving a captionless picture can leave only [{type:'text',text:''}].
+        // Omit that bridge-created empty shell from the request. Keep tool calls
+        // and any other metadata; never remove a pre-existing text-only record.
+        const emptyText = typeof current?.content === 'string' ? !current.content.trim()
+            : Array.isArray(current?.content) && current.content.every(part => part?.type === 'text' && typeof part.text === 'string' && !part.text.trim());
+        const hasMetadata = Object.keys(current || {}).some(key => !['role', 'content', 'name'].includes(key));
+        if (!(images.length && emptyText && !hasMetadata)) output.push(current);
         if (current?.role === 'assistant' && Array.isArray(current.tool_calls)) {
             for (const call of current.tool_calls) if (call?.id) pendingCalls.add(call.id);
         }
