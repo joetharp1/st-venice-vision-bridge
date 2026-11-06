@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { createImageTransport } from '../transport.mjs';
+import { createRequestDiagnostics } from '../diagnostics.mjs';
 import { parseModels } from '../models.mjs';
 import { createBridge } from '../runtime.mjs';
 import { characterKey, isVeniceConnection } from '../core.mjs';
@@ -27,7 +28,7 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
     const event_types = { CHAT_COMPLETION_SETTINGS_READY: 'settings_ready', GENERATION_STARTED: 'started', GENERATION_ENDED: 'ended', MESSAGE_SENT: 'sent', CHAT_COMPLETION_PROMPT_READY: 'chat_completion_prompt_ready', CHAT_CHANGED: 'chat_id_changed', GENERATION_STOPPED: 'generation_stopped', MESSAGE_RECEIVED: 'message_received', CHARACTER_MESSAGE_RENDERED: 'character_message_rendered' };
     const eventSource = { on(name, callback) { events.set(name, callback); }, async emit(name, ...args) { await events.get(name)?.(...args); } };
     const $ = selector => {
-        if (!controls.has(selector)) controls.set(selector, { properties: {}, handlers: {}, prop(name, value) { this.properties[name] = value; return this; }, text(value) { this.textValue = value; return this; }, append(value) { this.html = value; return this; }, on(name, handler) { this.handlers[name] = handler; return this; } });
+        if (!controls.has(selector)) controls.set(selector, { properties: {}, handlers: {}, prop(name, value) { this.properties[name] = value; return this; }, text(value) { this.textValue = value; return this; }, val(value) { this.value = value; return this; }, append(value) { this.html = value; return this; }, on(name, handler) { this.handlers[name] = handler; return this; } });
         return controls.get(selector);
     };
     const sandbox = vm.createContext({ location: { origin: 'https://st.test' }, document: { getElementById: () => ({ value: '' }) }, $, jQuery: callback => callback(), console: { info() {} }, crypto: { randomUUID: () => 'test-id' }, toastr: { error: assert.fail },
@@ -36,6 +37,7 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
         '../../../extensions.js': { extension_settings, getContext: () => context },
         '../../../chats.js': { hasPendingFileAttachment: () => false },
         './transport.mjs': { createImageTransport: options => createImageTransport({ ...options, render: async () => png }) },
+        './diagnostics.mjs': { createRequestDiagnostics },
         './continuation.mjs': { createPortraitContinuation: options => (continuation = createPortraitContinuation({ ...options, setTimer: () => 1, clearTimer: () => {} })) },
         '../../../../script.js': { Generate: async (type, options) => { assert.equal(type, 'normal'); assert.equal(options.automatic_trigger, true); followups++; }, isGenerating: () => false, eventSource, event_types, saveSettingsDebounced() {}, saveSettings() {}, getRequestHeaders() {} },
         '../../../utils.js': { saveBase64AsFile: async () => '/user/images/TestCharacter/bridge.png' },
@@ -56,6 +58,10 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
     });
     await module.evaluate();
     assert.ok(controls.get('#extensions_settings').html.includes('Venice Image Bridge'));
+    controls.get('#venice_bridge_diagnostic_arm').handlers.click();
+    assert.equal(JSON.parse(controls.get('#venice_bridge_diagnostic_report').value).captureRemaining, 3);
+    controls.get('#venice_bridge_diagnostic_clear').handlers.click();
+    assert.equal(JSON.parse(controls.get('#venice_bridge_diagnostic_report').value).captureRemaining, 0);
     const tool = tools.get('VeniceCreateImage');
     assert.equal(tool.shouldRegister(), false);
     controls.get('#venice_bridge_character').handlers.change.call({ checked: true });

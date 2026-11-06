@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.6.2 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.6.3 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -30,7 +30,7 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.4.2**. Avoid keeping another old SillyTavern tab open while changing settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.6.3**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
@@ -212,3 +212,15 @@ Gallery images, message attachments, identity references and generated output fi
 Update, reload, confirm 0.6.2, then re-enable **Send inline images/media** and send a short normal message with initiation still off for the initial live check. No new portrait, chat or reference upload is needed. Once ordinary replies work, initiations can be re-enabled.
 
 Validation: 81 unit/host/source checks; real Chromium converted two large PNG inputs from 25,263,786 to 896,148 bytes (1024×768 viewing copies) while retaining both images, corner orientation, proportions and originals. All 16 real JPEG orientation fixtures also passed. Tests use generated fixture images and mock provider calls; the live request still needs checking after update.
+
+## 0.6.3 — opt-in reply diagnostics
+
+The reply failure after an image is not yet diagnosed. This release adds observation only; it does not change sampling, prompts, tool handling, captions, chat history or image transport.
+
+Update and reload, open **Venice Image Bridge → Reply diagnostics → Capture next reply**, then retry the existing reply once. Open the same panel and **Copy report**. No new photo is necessary. Capture is limited to three Venice chat requests over five minutes and starts disabled after each reload. **Clear report** stops capture and removes the report from memory.
+
+The observer calls the original fetch with the original arguments and returns the original Response. It reads a separate bounded copy (64 KiB/20 seconds) for JSON errors or SSE error events, including errors inside HTTP 200 streams. It never retries, cancels the original request, changes settings, sends diagnostic data anywhere or writes reports into chat/localStorage. Only the most recent capture session stays in memory. The report contains request time, actual stream flag, model, numeric sampling fields, byte/image/message counts, last 30 message structures, tool-linkage warnings and allowlisted redacted error fields. It excludes request headers, chat text, images, tool arguments/schema contents and completion text. Known request strings/fragments, URLs, data URLs and credential patterns are removed from error strings. Errors with unknown fields are omitted; a redacted report can therefore have less detail than the provider returned.
+
+A reported HTTP status is the browser-to-SillyTavern status, not necessarily Venice's status. If SillyTavern exposes only “Bad Request”, the observer cannot recover a hidden upstream body. Structural warnings are diagnostic clues, not proof that Venice rejected that structure. No claim of a live fix is made.
+
+Validation: all 89 unit/host/source-contract tests passed. A real Chromium test passed JSON and HTTP-200 SSE error capture, exact request/response preservation, private text exclusion, clear/reload and mobile report layout at 320/393/709px. All provider responses were synthetic; the live rejection remains to be captured.

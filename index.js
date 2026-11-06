@@ -12,6 +12,7 @@ import { mountModels } from './models-ui.mjs';
 import { mountPortraits } from './portraits-ui.mjs';
 import { loadPortrait, USER_PORTRAIT_KEY } from './portraits.mjs';
 import { createImageTransport } from './transport.mjs';
+import { createRequestDiagnostics } from './diagnostics.mjs';
 import { createOrientationNormalizer } from './orientation.mjs';
 
 const NAME = 'st-venice-vision-bridge';
@@ -33,6 +34,14 @@ function settings() {
     s.characters ??= {};
     return s;
 }
+
+const diagnostics = createRequestDiagnostics({
+    fetch: globalThis.fetch.bind(globalThis), origin: location.origin,
+    enabled: () => settings().enabled && isVeniceConnection(getContext()),
+    onUpdate: () => $('#venice_bridge_diagnostic_report').val(diagnostics.report()),
+});
+// Dormant until Capture is pressed. Passes through the same request and Response.
+globalThis.fetch = diagnostics.fetch;
 
 const saveImage = (base64, name, extension = 'png') => saveBase64AsFile(base64, name || 'Character', `venice_bridge_${crypto.randomUUID()}`, extension);
 const loadReference = (url, signal) => loadPortrait(url, location.origin, (...args) => fetch(...args), signal);
@@ -127,8 +136,18 @@ jQuery(() => {
             <p>Uses your existing Venice Image Generation API key. Choose from the live image catalogue below, or keep your original model setting. Each image uses Venice credits. Maximum one tool attempt per user turn. Group chats are not supported.</p>
             <div id="venice_bridge_refresh" class="menu_button">Refresh status</div>
             <p id="venice_bridge_status"></p><p id="venice_bridge_transport">Image viewing copies prepared automatically; saved originals stay unchanged.</p>
+            <div class="inline-drawer">
+              <div class="inline-drawer-toggle inline-drawer-header"><b>Reply diagnostics</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>
+              <div class="inline-drawer-content">
+                <p>Capture up to three Venice chat requests during the next five minutes. No extra requests are sent. The report contains settings, message structure and redacted errors—not chat text or photos. It stays in this tab until cleared or reloaded.</p>
+                <div id="venice_bridge_diagnostic_arm" class="menu_button">Capture next reply</div>
+                <div id="venice_bridge_diagnostic_copy" class="menu_button">Copy report</div>
+                <div id="venice_bridge_diagnostic_clear" class="menu_button">Clear report</div>
+                <textarea id="venice_bridge_diagnostic_report" class="text_pole" readonly rows="10" style="width:100%;box-sizing:border-box" aria-label="Reply diagnostic report">Press Capture next reply, retry your reply, then copy this report.</textarea>
+              </div>
+            </div>
             <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div><div id="venice_bridge_user_portrait"></div>
-            <small>Version 0.6.2 · Built for SillyTavern 1.19.0</small>
+            <small>Version 0.6.3 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -139,6 +158,12 @@ jQuery(() => {
         saveSettingsDebounced(); refresh();
     });
     $('#venice_bridge_refresh').on('click', refresh);
+    $('#venice_bridge_diagnostic_arm').on('click', () => diagnostics.arm());
+    $('#venice_bridge_diagnostic_clear').on('click', () => diagnostics.clear());
+    $('#venice_bridge_diagnostic_copy').on('click', async () => {
+        try { await navigator.clipboard.writeText(diagnostics.report()); toastr.success('Diagnostic report copied.'); }
+        catch { toastr.info('Select and copy the report text below.'); }
+    });
     eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, async event => {
         if (!event.dryRun && settings().enabled && isVeniceConnection(getContext())) {
             const messages = await normalizeOrientation(event.chat);
