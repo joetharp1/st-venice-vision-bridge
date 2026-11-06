@@ -4,13 +4,15 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { createBridge } from '../runtime.mjs';
 import { characterKey, isVeniceConnection } from '../core.mjs';
+import { createOrientationNormalizer } from '../orientation.mjs';
 
 test('ST 1.19 host contract: initialize UI, enable character, invoke tool, render, save, adapt', async () => {
     const controls = new Map(), events = new Map(), tools = new Map(), rendered = [];
     const extension_settings = {
         'st-venice-image': { api_key: 'fake', model: 'chroma', width: 832, height: 1216, hide_watermark: true, safe_mode: true },
     };
-    let saved = 0;
+    let saved = 0, conversions = 0;
+    const tagged = 'data:image/jpeg;base64,' + Buffer.from('ffd8ffe1002245786966000049492a00080000000100120103000100000006000000000000000000ffd9', 'hex').toString('base64');
     const context = {
         mainApi: 'openai', chatCompletionSettings: { chat_completion_source: 'custom', custom_url: 'https://api.venice.ai/api/v1', media_inlining: true, function_calling: true },
         characters: [{ avatar: 'TestCharacter.png' }], characterId: 0, chatId: 'test', name2: 'TestCharacter',
@@ -32,6 +34,7 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
         '../../../utils.js': { saveBase64AsFile: async () => '/user/images/TestCharacter/bridge.png' },
         '../../../RossAscends-mods.js': { getMessageTimeStamp: () => 'test-time' },
         '../../../constants.js': { MEDIA_DISPLAY: { GALLERY: 'gallery' }, MEDIA_SOURCE: { GENERATED: 'generated' }, MEDIA_TYPE: { IMAGE: 'image' } },
+        './orientation.mjs': { createOrientationNormalizer: options => createOrientationNormalizer({ ...options, render: async () => { await new Promise(resolve => setTimeout(resolve, 5)); conversions++; return 'data:image/jpeg;base64,UPRIGHT'; } }) },
         './core.mjs': { characterKey, isVeniceConnection }, './runtime.mjs': { createBridge },
         './album-ui.mjs': { mountAlbum() {} },
         './models-ui.mjs': { mountModels() {} },
@@ -59,4 +62,18 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
     assert.equal(request.chat[1].role, 'user');
     assert.equal(context.chat[1].extra.media[0].url, '/user/images/TestCharacter/bridge.png');
     assert.equal(extension_settings['st-venice-image'].api_key, 'fake');
+    const userPhoto = () => ({ chat: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: tagged, detail: 'high' } }] }] });
+    const dry = userPhoto(); dry.dryRun = true;
+    await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, dry); assert.equal(conversions, 0);
+    const actual = userPhoto(); await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, actual);
+    assert.equal(conversions, 1); assert.equal(actual.chat[0].content[0].image_url.url, 'data:image/jpeg;base64,UPRIGHT');
+    assert.equal(actual.chat[0].content[0].image_url.detail, 'high');
+    extension_settings['st-venice-vision-bridge'].enabled = false;
+    const disabled = userPhoto(); await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, disabled);
+    assert.equal(disabled.chat[0].content[0].image_url.url, tagged);
+    extension_settings['st-venice-vision-bridge'].enabled = true;
+    context.chatCompletionSettings.custom_url = 'https://example.test/v1';
+    const other = userPhoto(); await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, other);
+    assert.equal(other.chat[0].content[0].image_url.url, tagged);
+
 });

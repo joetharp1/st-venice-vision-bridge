@@ -20,10 +20,11 @@ test('installer checks version, keeps existing generator/chat untouched, backs u
         const check = run('--dry-run'); assert.equal(check.status, 0, check.stderr);
         assert.equal(fs.existsSync(target), false);
         const install = run(); assert.equal(install.status, 0, install.stderr);
-        assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'manifest.json'))).version, '0.5.0');
+        assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'manifest.json'))).version, '0.5.1');
         assert.ok(fs.existsSync(path.join(target, 'album-ui.mjs')));
         assert.ok(fs.existsSync(path.join(target, 'models-ui.mjs')));
         assert.ok(fs.existsSync(path.join(target, 'models.mjs')));
+        assert.ok(fs.existsSync(path.join(target, 'orientation.mjs')));
         assert.ok(fs.existsSync(path.join(target, 'portraits.mjs')));
         assert.ok(fs.existsSync(path.join(target, 'portraits-ui.mjs')));
         fs.writeFileSync(path.join(target, 'old-test.txt'), 'PREVIOUS BRIDGE');

@@ -166,3 +166,11 @@ It requires exactly ST 1.19.0, does not find Docker containers, and does not cha
 - ST 1.19.0: `public/script.js`, `public/scripts/openai.js`, `public/scripts/st-context.js`, `public/scripts/tool-calling.js`, `public/scripts/chats.js`, `public/scripts/utils.js`, `src/endpoints/files.js`, `src/endpoints/settings.js`, `src/endpoints/data-maid.js`.
 
 Independent companion extension; not an official Venice or SillyTavern release.
+
+## 0.5.1 — phone-photo orientation
+
+Outgoing JPEG attachments with EXIF rotation or mirroring are decoded in the browser and re-encoded upright before Venice receives them. The saved originals and chat display are unchanged. Covers human and assistant image inputs, including existing photos sent again in context. JPEGs already upright, PNGs and WebP files pass through unchanged. No prompts, character settings, image generation or journal behavior change.
+
+Conversion preserves pixel dimensions and uses JPEG quality 0.98; it is not a byte-lossless operation. A bounded in-memory cache avoids repeated conversion. Conversion failures show a warning and send the original. Photos above 48 megapixels use this fallback to avoid excessive canvas memory. No extra network requests or model calls are made.
+
+Update Venice Image Bridge in SillyTavern, reload, and confirm version 0.5.1. Send an original affected photo once to verify the provider-side result.

@@ -9,8 +9,15 @@ import { mountAlbum } from './album-ui.mjs';
 import { mountModels } from './models-ui.mjs';
 import { mountPortraits } from './portraits-ui.mjs';
 import { loadPortrait } from './portraits.mjs';
+import { createOrientationNormalizer } from './orientation.mjs';
 
 const NAME = 'st-venice-vision-bridge';
+const normalizeOrientation = createOrientationNormalizer({
+    onError: error => {
+        console.warn('[Venice Image Bridge] Photo orientation correction failed:', error.message);
+        toastr.warning('Could not correct a photo’s orientation. The original was sent; a screenshot can be used instead.');
+    },
+});
 function settings() {
     const s = extension_settings[NAME] ||= {};
     s.enabled ??= true;
@@ -101,7 +108,7 @@ jQuery(() => {
             <div id="venice_bridge_refresh" class="menu_button">Refresh status</div>
             <p id="venice_bridge_status"></p>
             <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div>
-            <small>Version 0.5.0 · Built for SillyTavern 1.19.0</small>
+            <small>Version 0.5.1 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -112,7 +119,13 @@ jQuery(() => {
         saveSettingsDebounced(); refresh();
     });
     $('#venice_bridge_refresh').on('click', refresh);
-    eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, event => bridge.adapt(event));
+    eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, async event => {
+        if (!event.dryRun && settings().enabled && isVeniceConnection(getContext())) {
+            const messages = await normalizeOrientation(event.chat);
+            event.chat.splice(0, event.chat.length, ...messages);
+        }
+        bridge.adapt(event);
+    });
     eventSource.on(event_types.CHAT_CHANGED, refresh);
     eventSource.on(event_types.GENERATION_STOPPED, () => bridge.handleGenerationStopped());
     getContext().registerFunctionTool(bridge.tool());
