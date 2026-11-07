@@ -137,7 +137,7 @@ export function createRequestDiagnostics({ fetch: originalFetch, origin, enabled
     const api = {
         arm() { epoch++; records = []; remaining = 3; until = now() + 300000; notify(); },
         clear() { epoch++; records = []; remaining = 0; notify(); },
-        report() { return JSON.stringify({ bridge: '0.6.4', captureRemaining: now() <= until ? remaining : 0, requests: records }, null, 2); },
+        report() { return JSON.stringify({ bridge: '0.6.5', captureRemaining: now() <= until ? remaining : 0, requests: records }, null, 2); },
         async fetch(input, init) {
             let record, clean, captureEpoch;
             try {

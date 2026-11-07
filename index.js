@@ -16,6 +16,16 @@ import { createRequestDiagnostics } from './diagnostics.mjs';
 import { createOrientationNormalizer } from './orientation.mjs';
 
 const NAME = 'st-venice-vision-bridge';
+// Extend after built-in TTS initialization. A missing TTS module cannot stop images.
+eventSource.on(event_types.APP_READY, async () => {
+    try {
+        const { installV4Provider } = await import('./elevenlabs-v4.mjs');
+        await installV4Provider();
+    } catch (error) {
+        console.warn('[Venice Image Bridge] Optional ElevenLabs v4 provider unavailable:', error.message);
+        toastr.warning('ElevenLabs v4 provider could not load. Image Bridge remains available.');
+    }
+});
 let transportEpoch = 0;
 let transportStatus = 'Image viewing copies prepared automatically; saved originals stay unchanged.';
 const prepareImageTransport = createImageTransport({ onStats: stats => {
@@ -147,7 +157,7 @@ jQuery(() => {
               </div>
             </div>
             <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div><div id="venice_bridge_user_portrait"></div>
-            <small>Version 0.6.4 · Built for SillyTavern 1.19.0</small>
+            <small>Version 0.6.5 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);

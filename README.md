@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.6.4 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.6.5 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -30,7 +30,7 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.6.4**. Avoid keeping another old SillyTavern tab open while changing settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.6.5**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
@@ -234,3 +234,11 @@ The diagnostic now flags empty text-part arrays and preserves exact standard err
 Update, reload and retry the existing message once. No photo regeneration or history deletion is required. This repairs a reproduced request-shape defect; the generic live “Bad Request” response does not establish that it was the only cause. Capture a new report if the retry still fails.
 
 Validation: 91 unit/host/source-contract tests passed, including the captionless photo → tool result → follow-up request shape, image-byte preservation and stored-chat immutability. The real Chromium diagnostic/mobile checks also passed. Live acceptance is pending.
+
+## 0.6.5 — ElevenLabs v4 model support
+
+After update and reload, keep **ElevenLabs** in Select TTS Provider and choose **Eleven v4 Turbo** in Model. Set Stability 40%, Similarity 80%. Set the ElevenLabs key through the existing secure key manager, reload voices and map the desired character to the chosen voice. Enable TTS only after mapping. Existing model choices, mappings, provider settings and character cards are preserved.
+
+This scoped compatibility adapter extends only the built-in ElevenLabs provider at runtime; no ST core files or global fetch functions are patched by the TTS module. It adds the model choices and omits speed/style/speaker boost only on v4 requests through ST's authenticated synthesis endpoint. Legacy models retain their original generation methods. For v4 only, it bypasses the old history cache because that cache matches text/voice without checking the model. Audio tags pass through unchanged. This update does not install a display regex, set any character voice or alter character prompts.
+
+At APP_READY the adapter adds options to any existing panel and restores the saved selection without firing a change event or writing settings. Later provider reloads include those options normally. The original ElevenLabs provider name remains, avoiding unavailable-provider errors during startup. Initialization failures are isolated from image initialization. No voice IDs, API keys or personal text are included. Live speech acceptance requires an account test; local responses are synthetic.
