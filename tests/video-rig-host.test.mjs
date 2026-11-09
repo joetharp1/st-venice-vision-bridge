@@ -8,7 +8,8 @@ import * as core from '../video-rig-core.mjs';
 const box = (type, payload = Buffer.alloc(0)) => { const b = Buffer.alloc(8 + payload.length); b.writeUInt32BE(b.length); b.write(type, 4); payload.copy(b, 8); return b; };
 const mp4 = () => new Blob([box('ftyp', Buffer.from('isom0000')), box('moov', box('trak', box('mdia', box('hdlr', Buffer.concat([Buffer.alloc(8), Buffer.from('vide')])))))], { type: 'video/mp4' });
 async function fixture() {
-    let server = {}, saveFails = false, wrongBytes = false;
+    let server = {}, saveFails = false, wrongBytes = false, timeoutAfterUpload = false;
+    const timeouts = [];
     const files = new Map(), requests = [], memory = new Map(), lockTails = new Map();
     const ext = { 'st-venice-image': { api_key: 'fixture-secret' } };
     let chatId = 'original'; const chats = { original: [], other: [] };
@@ -17,7 +18,7 @@ async function fixture() {
     const response = (body, status = 200, type = 'application/json') => new Response(type === 'application/json' ? JSON.stringify(body) : body, { status, headers: { 'content-type': type } });
     let provider = async (url, op) => response({ quote: .55 });
     const sandbox = vm.createContext({ console, URL, Blob, Uint8Array, DataView, Number, String, Map, Set, Date, JSON, crypto: webcrypto,
-        structuredClone, AbortSignal, location: { origin: 'https://st.test' }, document: { hidden: false, getElementById: () => null },
+        structuredClone, AbortSignal: { timeout: ms => { timeouts.push(ms); return AbortSignal.timeout(ms); } }, location: { origin: 'https://st.test' }, document: { hidden: false, getElementById: () => null },
         navigator: { locks: { request: async (key, options, fn) => {
             if (options.ifAvailable && lockTails.has(key)) return fn(null);
             const before = lockTails.get(key) || Promise.resolve(); let done;
@@ -31,7 +32,7 @@ async function fixture() {
             if (url.startsWith('https://api.venice.ai/')) return provider(url, op);
             const body = op.body ? JSON.parse(op.body) : {};
             if (url === '/api/settings/get') return response({ settings: JSON.stringify({ extension_settings: server }) });
-            if (url === '/api/files/upload') { const path = '/user/files/' + body.name; files.set(path, Buffer.from(body.data, 'base64')); return response({ path }); }
+            if (url === '/api/files/upload') { const path = '/user/files/' + body.name; files.set(path, Buffer.from(body.data, 'base64')); if (timeoutAfterUpload) throw Object.assign(new Error('signal timed out'), { name: 'TimeoutError' }); return response({ path }); }
             if (url === '/api/files/delete') { files.delete(body.path); return response({}); }
             if (url === '/api/files/verify') return response(Object.fromEntries(body.urls.map(u => [u, files.has(u)])));
             if (url === '/api/chats/get') return response([{ chat_metadata: {} }, ...chats[body.file_name]]);
@@ -50,7 +51,7 @@ async function fixture() {
         saveSettings: async () => { if (!saveFails) server = structuredClone(ext); },
         getMessageTimeStamp: () => 'fixture', MEDIA_TYPE: { VIDEO: 'video' }, MEDIA_SOURCE: { GENERATED: 'generated' }, MEDIA_DISPLAY: { GALLERY: 'gallery' } };
     const d = module.namespace.createRigHost(host);
-    return { d, host, api: module.namespace, requests, files, ext, chats, context,
+    return { d, host, api: module.namespace, requests, files, ext, chats, context, timeouts, timeoutUpload: () => timeoutAfterUpload = true,
         get server() { return server; }, failSave: b => saveFails = b, badBytes: b => wrongBytes = b, provider: fn => provider = fn,
         reopen: () => module.namespace.createRigHost({ ...host, extension_settings: structuredClone(server) }) };
 }
@@ -137,4 +138,22 @@ test('network timeout identifies its endpoint without exposing credentials and i
     assert.equal(report.checks.lastFailure.operation, 'Venice /video/quote');
     assert.match(report.checks.lastFailure.error, /TimeoutError \[network\]/);
     assert.equal(JSON.stringify(report).includes('fixture-secret'), false);
+});
+
+
+test('upload timeout after server write recovers the same bytes and never uploads the video twice', async () => {
+    const f = await fixture(), j = { ...job(), source: { path: '/user/files/verified_still.png', verifiedAt: 1 } };
+    f.timeoutUpload();
+    const saved = await f.d.saveVideo(j, mp4());
+    assert.ok(saved.verifiedAt); assert.ok(f.server.disabled_attachments.includes(saved.path));
+    assert.equal(JSON.parse(f.d.report()).checks.uploadRecovery.matchedExistingBytes, true);
+    await f.reopen().saveVideo(j, mp4());
+    assert.equal(f.requests.filter(([url]) => url === '/api/files/upload').length, 1);
+    assert.ok(f.timeouts.includes(120000));
+});
+test('recovery refuses a mismatched existing video instead of overwriting it or accepting corrupt bytes', async () => {
+    const f = await fixture(), j = { ...job(), source: { path: '/user/files/verified_still.png', verifiedAt: 1 } };
+    f.files.set('/user/files/' + j.fileName, Buffer.from('wrong bytes'));
+    await assert.rejects(f.d.saveVideo(j, mp4()), /bytes do not match/);
+    assert.equal(f.requests.some(([url]) => url === '/api/files/upload'), false);
 });

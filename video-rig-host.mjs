@@ -101,7 +101,7 @@ export function createRigHost(host) {
             throw error;
         }
     };
-    const post = async (path, body) => request(path, { method: 'POST', headers: host.getRequestHeaders(), body: JSON.stringify(body) });
+    const post = async (path, body, timeout) => request(path, { method: 'POST', headers: host.getRequestHeaders(), body: JSON.stringify(body) }, timeout);
     const serverSettings = async () => {
         const response = await post('/api/settings/get', {});
         let data;
@@ -182,13 +182,34 @@ export function createRigHost(host) {
     }
     const savedChat = async job => (await post('/api/chats/get', { avatar_url: job.target.avatar, file_name: job.target.chatId })).json();
     const saveAsset = async (job, blob, fileName) => {
+        if (!/^[a-zA-Z0-9_.-]+$/.test(fileName)) throw new Error('Invalid generated media filename.');
         const sha256 = await digest(blob);
-        const uploaded = await (await post('/api/files/upload', { name: fileName, data: (await dataURL(blob)).split(',')[1] })).json();
-        const path = localFile(uploaded.path);
-        const verified = await (await post('/api/files/verify', { urls: [path] })).json();
-        if (verified[path] !== true) throw new Error('Uploaded media was not found by ST file verification.');
-        const returned = await (await request(path, { cache: 'no-store' })).blob();
-        if (returned.size !== blob.size || await digest(returned) !== sha256) throw new Error('Uploaded media bytes do not match. Provider copy retained.');
+        // Derive a recovery candidate only from an already returned/verified ST file directory.
+        // A timed-out upload can have reached the server. Matching bytes avoid another upload.
+        const candidate = job.source?.verifiedAt && job.source.path
+            ? localFile(job.source.path).replace(/[^/]+$/, fileName) : null;
+        const verify = async path => {
+            const exists = await (await post('/api/files/verify', { urls: [path] }, 45000)).json();
+            if (exists[path] === false) return false;
+            if (exists[path] !== true) throw new Error('Uploaded media lookup returned an unrecognised result.');
+            const returned = await (await request(localFile(path), { cache: 'no-store' }, 120000)).blob();
+            if (returned.size !== blob.size || await digest(returned) !== sha256) throw new Error('Uploaded media bytes do not match. Provider copy retained.');
+            return true;
+        };
+        let path;
+        if (candidate && await verify(candidate)) path = candidate;
+        if (!path) {
+            try {
+                const uploaded = await (await post('/api/files/upload', { name: fileName, data: (await dataURL(blob)).split(',')[1] }, 120000)).json();
+                path = localFile(uploaded.path);
+                if (!await verify(path)) throw new Error('Uploaded media was not found by ST file verification.');
+            } catch (error) {
+                if (!['TimeoutError', 'TypeError', 'AbortError'].includes(error.name) || !candidate) throw error;
+                if (!await verify(candidate)) throw error;
+                path = candidate;
+                checks.uploadRecovery = { at: new Date().toISOString(), matchedExistingBytes: true };
+            }
+        }
         await registerFile(job, path, blob.size);
         return { path, bytes: blob.size, sha256, verifiedAt: Date.now() };
     };
@@ -222,15 +243,7 @@ export function createRigHost(host) {
         },
         saveVideo: async (job, blob) => {
             const details = await inspectMP4(blob);
-            const response = await post('/api/files/upload', { name: job.fileName, data: (await dataURL(blob)).split(',')[1] });
-            const uploaded = await response.json(), path = uploaded.path;
-            localFile(path);
-            const verified = await (await post('/api/files/verify', { urls: [path] })).json();
-            if (verified[path] !== true) throw new Error('Uploaded video was not found by ST file verification.');
-            const returned = await (await request(localFile(path), { cache: 'no-store' })).blob();
-            if (returned.size !== blob.size || await digest(returned) !== details.sha256) throw new Error('Uploaded video bytes do not match the provider result. Provider copy retained.');
-            await registerFile(job, path, blob.size);
-            return { path, ...details, verifiedAt: Date.now() };
+            return { ...await saveAsset(job, blob, job.fileName), ...details };
         },
         cleanup: async job => {
             if (!job.saved?.verifiedAt) throw new Error('Provider cleanup requires a verified saved copy.');

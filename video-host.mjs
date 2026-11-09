@@ -53,7 +53,7 @@ export function createCompanionHost(host) {
         },
         ready: () => availability().ready,
         availability,
-        report: () => JSON.stringify({ ...JSON.parse(baseReport()), companionVideo: '0.7.1', availability: availability() }, null, 2),
+        report: () => JSON.stringify({ ...JSON.parse(baseReport()), companionVideo: '0.7.2', availability: availability() }, null, 2),
         announcement: async job => {
             if (stopped.has(job.id)) return 'abort';
             if (host.isGenerating()) return null;

@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.7.1 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.7.2 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -30,7 +30,7 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.7.1**. Avoid keeping another old SillyTavern tab open while changing settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.7.2**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
@@ -263,3 +263,8 @@ See [COMPANION-VIDEO.md](COMPANION-VIDEO.md) for phone setup, implementation map
 ## 0.7.1 — Video enable controls and diagnostics
 
 Checking prices now preserves the unsaved Enable checkbox and form selections. Save explicitly confirms video tool readiness, with an actionable reason if unavailable. Reports include saved availability, whether the video tool was invoked, and the endpoint behind any request timeout. Empty queues no longer run full recovery every 15 seconds; idle checks run once per minute and background errors do not replace save confirmations. Image tool descriptions direct video requests to VeniceCreateVideo. Existing references, budgets and cards are preserved.
+
+
+## 0.7.2 — Recover completed clips after upload timeouts
+
+ST media uploads and full-file read-back now have 120-second timeouts; small metadata calls retain shorter limits. Video saving checks a deterministic filename in the already verified still directory before uploading. If a network timeout follows a successful server write, byte-length and SHA-256 verification recover that same file. Mismatched files are not overwritten. The stored queue is retained; no image/video generation is resubmitted.

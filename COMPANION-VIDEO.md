@@ -1,10 +1,10 @@
-# Companion video 0.7.1
+# Companion video 0.7.2
 
 This release adds an opt-in `VeniceCreateVideo` tool to the existing Venice Image Bridge. It creates a fresh composed still through the saved reference-image pipeline, then animates that exact still with `wan-2-7-enhanced-image-to-video`. The companion's text reply is saved before either paid stage starts. Ordinary chat can continue while a submitted video renders.
 
 ## Install on the phone
 
-1. In ST's extension manager, update **Venice Image Bridge**, then reload. Check **Version 0.7.1**. Use one device and one active ST tab for the first acceptance run.
+1. In ST's extension manager, update **Venice Image Bridge**, then reload. Check **Version 0.7.2**. Use one device and one active ST tab for the first acceptance run.
 2. Open Ava's saved chat. In **Venice Image Bridge → Companion video**, press **Check live prices and set initial budget**. This checks catalogues and quotes only; it does not generate anything.
 3. Leave audio **Ambient** and resolution **Lowest advertised** for the first clip. Tick **Enable video for this companion**, then press **Save video settings**.
 4. Ask for a five-second, fully clothed clip with a small head movement and a fixed camera. Her announcement should arrive first. The tool creates the still and queues the video afterwards. The panel shows its state and any error.
@@ -46,7 +46,7 @@ Silent mode is not promised by a catalogue flag alone. Run the manual silent con
 
 ## Validation and remaining acceptance
 
-**142 automated tests passed, none skipped**, including the existing image, album, initiation-facing bridge, transport and TTS tests. New tests exercise the real production core and host adapter, frozen references, both-person pricing, scoped aspect ratio, announcement ordering, continuation cancellation, duplicate requests, two global slots, quote changes, rejected/ambiguous submissions, saved receipt recovery, TTL, budget arithmetic, retention ownership, reference protection, and original-chat attachment. Pinned ST 1.19.0 source contracts cover the host exports, file endpoints, settings, chat storage and native MP4 rendering.
+**144 automated tests passed, none skipped**, including the existing image, album, initiation-facing bridge, transport and TTS tests. New tests exercise the real production core and host adapter, frozen references, both-person pricing, scoped aspect ratio, announcement ordering, continuation cancellation, duplicate requests, two global slots, quote changes, rejected/ambiguous submissions, saved receipt recovery, TTL, budget arithmetic, retention ownership, reference protection, and original-chat attachment. Pinned ST 1.19.0 source contracts cover the host exports, file endpoints, settings, chat storage and native MP4 rendering.
 
 Actual Venice authentication/quotes/audio-switch behavior, browser close/reopen recovery against the live server, and Android MP4 playback **are not yet verified**. Chromium could not launch in the development environment because its socket operation was denied; browser playback is not claimed as tested. The Studio audition establishes a promising visual result, not API acceptance.
 
@@ -77,3 +77,10 @@ Official API references: [video workflow](https://docs.venice.ai/guides/media/vi
 Joe’s API diagnostic confirmed the model, 5/10/15-second durations, 720p/1080p, native audio with `audio_configurable: false`, and a five-second 720p quote of US$0.64. No job was recorded in the supplied report. The panel showed a generic timeout; that evidence does not identify its request or establish whether the video tool was offered. The saved US$4.20/day and US$63/30-day ceilings correspond to a US$0.70 starting baseline including the still.
 
 Code review found that the quote handler reset an unsaved Enable checkbox. Version 0.7.1 preserves it until Save, displays saved tool readiness, records tool invocation/preflight failures, identifies request timeouts by endpoint, and reduces idle server reads. UI-handler regression tests run the actual quote/save handlers with a minimal DOM fixture; browser layout is not claimed as tested. After updating, tick Enable, Save, and confirm **Video tool READY** before requesting a new clip. No API generation or playback has yet been demonstrated by this diagnostic.
+
+
+## 0.7.2 live upload follow-up
+
+The first live job reached `saving` with an upload timeout at SillyTavern `/api/files/upload`. The provider result had reached the client, but a verified ST copy was not yet recorded. Version 0.7.2 extends media upload/read-back deadlines from 30 to 120 seconds, probes the deterministic video filename in the verified source-still directory, and recovers a completed upload only after exact byte-length/SHA-256 matching. This applies before retrying an upload and after an ambiguous network timeout. A mismatch blocks overwriting. Disabled Data Bank registration and provider cleanup ordering are unchanged.
+
+Recovery uses the existing saved queue; no new generation is necessary. Update/reload, reopen the original chat and use Check saved jobs. Keep the tab visible while the media saves. Live delivery/playback still needs confirmation; the successful regression tests simulate both an upload that landed before timeout and a mismatched existing file.

@@ -7,7 +7,7 @@ export async function mountCompanionVideo(host) {
     if (mounted) return mounted;
     const d = createCompanionHost(host), rig = createVideoRig(d), engine = createCompanionVideo(d, rig);
     const root = document.createElement('div'); root.id = 'venice_companion_video';
-    root.innerHTML = `<hr><h4>Companion video · 0.7.1</h4>
+    root.innerHTML = `<hr><h4>Companion video · 0.7.2</h4>
       <p>Reference-based five-second clips, delivered after the chat reply. Your reference and companion references are shared with the image bridge.</p>
       <p data-character></p>
       <label class="checkbox_label"><input type="checkbox" data-field="enabled"><span>Enable video for this companion</span></label>
