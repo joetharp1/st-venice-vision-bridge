@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.7.2 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.7.3 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -30,7 +30,7 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.7.2**. Avoid keeping another old SillyTavern tab open while changing settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.7.3**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
@@ -268,3 +268,7 @@ Checking prices now preserves the unsaved Enable checkbox and form selections. S
 ## 0.7.2 — Recover completed clips after upload timeouts
 
 ST media uploads and full-file read-back now have 120-second timeouts; small metadata calls retain shorter limits. Video saving checks a deterministic filename in the already verified still directory before uploading. If a network timeout follows a successful server write, byte-length and SHA-256 verification recover that same file. Mismatched files are not overwritten. The stored queue is retained; no image/video generation is resubmitted.
+
+## 0.7.3 — Explain image provider rejections
+
+Image HTTP errors now include the selected model/options and bounded, redacted structured provider validation details. Echoed inputs, reference data and API credentials are excluded. A failure still consumes the one image attempt for that user turn; there is no automatic retry or model fallback. This diagnostic change does not itself resolve an upstream rejection.

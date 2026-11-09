@@ -77,6 +77,37 @@ function pickError(value, clean, depth = 0) {
     return out;
 }
 
+// Error bodies are bounded and structured-only: never return echoed inputs or raw HTML.
+export async function imageFailureMessage(response, body, apiKey, { timeoutMs = 2000, maxBytes = 65536 } = {}) {
+    const clean = errorSanitizer({ messages: [body.prompt, body.negative_prompt, body.image, ...(body.images || [])], api_key: apiKey });
+    const selection = ['model', 'modelId', 'aspect_ratio', 'resolution', 'quality'].filter(key => body[key] !== undefined)
+        .map(key => `${key}=${safeName(String(body[key])) || '[omitted]'}`).join(', ');
+    let detail = 'Provider detail unavailable.', reader, timer;
+    try {
+        reader = response.body?.getReader();
+        if (reader) {
+            const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), timeoutMs); });
+            const decoder = new TextDecoder();
+            let text = '', bytes = 0;
+            while (true) {
+                const part = await Promise.race([reader.read(), timeout]);
+                if (part.done) break;
+                bytes += part.value.byteLength;
+                if (bytes > maxBytes) throw new Error('size');
+                text += decoder.decode(part.value, { stream: true });
+            }
+            text += decoder.decode();
+            const safe = pickError(JSON.parse(text), clean);
+            if (safe && typeof safe === 'object' && Object.keys(safe).length) detail = JSON.stringify(safe).slice(0, 2400);
+        }
+    } catch { /* Keep the HTTP status even for unreadable or oversized error bodies. */ }
+    finally {
+        clearTimeout(timer);
+        try { reader?.cancel().catch(() => {}); } catch { /* best effort */ }
+    }
+    return `Venice image generation returned HTTP ${response.status}. ${selection ? `Settings: ${selection}. ` : ''}${detail} No automatic retry was made.`;
+}
+
 async function observeResponse(response, record, clean, update, { maxBytes, timeoutMs }) {
     let reader, timer;
     try {

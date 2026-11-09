@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequestDiagnostics, describeRequest } from '../diagnostics.mjs';
+import { createRequestDiagnostics, describeRequest, imageFailureMessage } from '../diagnostics.mjs';
+
+test('image error inspection is bounded and never exposes unstructured response bodies', async () => {
+    for (const response of [new Response('<html>private response</html>', { status: 422 }), new Response(JSON.stringify({ message: 'x'.repeat(100) }), { status: 422 })]) {
+        const text = await imageFailureMessage(response, { model: 'ref' }, '', { maxBytes: 40 });
+        assert.match(text, /HTTP 422/); assert.match(text, /detail unavailable/);
+        assert.doesNotMatch(text, /private response|xxxx/);
+    }
+    let cancelled = false;
+    const response = new Response(new ReadableStream({ cancel() { cancelled = true; } }), { status: 422 });
+    assert.match(await imageFailureMessage(response, {}, '', { timeoutMs: 10 }), /HTTP 422/);
+    assert.equal(cancelled, true);
+});
 
 const origin = 'https://st.test', path = '/api/backends/chat-completions/generate';
 const data = () => ({ chat_completion_source: 'custom', custom_url: 'https://api.venice.ai/api/v1', model: 'test-model', stream: false,

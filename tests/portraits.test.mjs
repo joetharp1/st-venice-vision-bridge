@@ -5,6 +5,27 @@ import { parseModels, fetchModels } from '../models.mjs';
 import { INITIATION_TAIL, IDENTITY_PROMPT, portraitPlan, attachPortrait, editedImage, portraitPrice, loadPortrait } from '../portraits.mjs';
 const png = 'data:image/png;base64,' + btoa('\x89PNG\r\n\x1a\nfixture');
 const jpg = 'data:image/jpeg;base64,' + btoa('\xff\xd8\xfffixture');
+
+test('portrait rejection exposes validation location without inputs or credentials and never retries', async () => {
+    const h = setup(); let calls = 0;
+    h.legacy.api_key = 'private-api-key-123';
+    h.deps.fetch = async (_, options) => {
+        calls++;
+        const body = JSON.parse(options.body);
+        return new Response(JSON.stringify({ detail: [{ loc: ['body', 'aspect_ratio'], msg: 'Unsupported aspect ratio', input: body }], error: { message: `${body.prompt} ${body.image} private-api-key-123` } }), { status: 422 });
+    };
+    const bridge = createBridge(h.deps);
+    await assert.rejects(bridge.portraitTool().action({ prompt: 'Private hotel scene description' }), error => {
+        assert.match(error.message, /HTTP 422/);
+        assert.match(error.message, /model=ref-model/);
+        assert.match(error.message, /aspect_ratio/);
+        assert.match(error.message, /Unsupported aspect ratio/);
+        assert.doesNotMatch(error.message, /Private hotel|private-api-key-123|data:image|base64|"input"/);
+        return true;
+    });
+    await assert.rejects(bridge.portraitTool().action({ prompt: 'Try again' }), /One image attempt/);
+    assert.equal(calls, 1); assert.equal(h.posted.length, 0);
+});
 const catalogue = { data: [
     { id: 'ref-model', type: 'inpaint', model_spec: { name: 'Reference', constraints: { aspectRatios: ['1:1', '2:3'], defaultAspectRatio: '2:3' }, pricing: { inpaint: { usd: 0.03 } } } },
     { id: 'tier-ref', type: 'inpaint', model_spec: { constraints: { aspectRatios: ['1:1'], resolutions: ['1K', '2K'], defaultResolution: '1K', qualities: ['low', 'high'], defaultQuality: 'low' }, pricing: { quality: { '1K': { low: { usd: 0.04 } } }, inputImages: { included: 0, additional: { usd: 0.01 } } } } },

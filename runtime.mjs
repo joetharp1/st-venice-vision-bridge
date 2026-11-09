@@ -1,5 +1,6 @@
 import { adaptAssistantImages, characterKey, imageRequestBody, isVeniceConnection, TOOL_NAME } from './core.mjs';
 import { selectedGeneratorSettings } from './models.mjs';
+import { imageFailureMessage } from './diagnostics.mjs';
 import { portraitPlan, attachPortrait, editedImage, PORTRAIT_TOOL, initiationPortraitArgs, referenceCostUsd } from './portraits.mjs';
 import { userPortraitPlan, USER_PORTRAIT_KEY, USER_PORTRAIT_TOOL } from './portraits.mjs';
 
@@ -128,7 +129,7 @@ export function createBridge(deps) {
                 method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.api_key}` },
                 body: JSON.stringify(body), signal: controller.signal,
             });
-            if (!response.ok) throw new Error(`Venice image generation returned HTTP ${response.status}. No automatic retry was made.`);
+            if (!response.ok) throw new Error(await imageFailureMessage(response, body, settings.api_key));
             const result = portrait ? await editedImage(response) : { base64: (await response.json())?.images?.[0], extension: 'png' };
             const { base64, extension } = result;
             if (typeof base64 !== 'string' || !base64.length) throw new Error('Venice returned no image.');
