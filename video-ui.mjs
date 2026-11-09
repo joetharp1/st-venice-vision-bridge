@@ -7,10 +7,11 @@ export async function mountCompanionVideo(host) {
     if (mounted) return mounted;
     const d = createCompanionHost(host), rig = createVideoRig(d), engine = createCompanionVideo(d, rig);
     const root = document.createElement('div'); root.id = 'venice_companion_video';
-    root.innerHTML = `<hr><h4>Companion video · 0.7.0</h4>
+    root.innerHTML = `<hr><h4>Companion video · 0.7.1</h4>
       <p>Reference-based five-second clips, delivered after the chat reply. Your reference and companion references are shared with the image bridge.</p>
       <p data-character></p>
       <label class="checkbox_label"><input type="checkbox" data-field="enabled"><span>Enable video for this companion</span></label>
+      <p data-availability role="status"></p>
       <label>Audio<select class="text_pole" data-field="audio"><option value="ambient">Ambient · no companion voice</option><option value="silent">Silent · requires a verified API test</option></select></label>
       <label>Resolution<select class="text_pole" data-field="resolution"><option value="">Lowest advertised · audition setting</option><option value="720p">720p</option><option value="1080p">1080p</option></select></label>
       <p>Silent mode unlocks only after a silent connection test finishes and you mark its playback silent. Lip-sync is not part of this version.</p>
@@ -25,7 +26,7 @@ export async function mountCompanionVideo(host) {
       <label>Generated video storage cap · MB<input class="text_pole" type="number" min="32" max="8192" data-field="storageMB"></label>
       <button class="menu_button" data-action="save">Save video settings</button>
       <button class="menu_button" data-action="resume">Check saved jobs</button>
-      <p data-budget></p><p data-status role="status">Loading saved video jobs…</p>
+      <p data-budget></p><p data-status role="status">Loading saved video jobs…</p><p data-background></p>
       <div data-jobs></div>
       <button class="menu_button" data-action="report">Show diagnostic report</button>
       <textarea class="text_pole" data-report readonly rows="5" hidden aria-label="Video diagnostic report"></textarea>
@@ -36,13 +37,14 @@ export async function mountCompanionVideo(host) {
     root.querySelectorAll('input[type="number"],select,textarea').forEach(el => el.style.cssText = 'width:100%;box-sizing:border-box');
     document.getElementById('venice_bridge_settings').querySelector('.inline-drawer-content').append(root);
     const $ = s => root.querySelector(s), status = s => $('[data-status]').textContent = s;
-    let formDirty = false, working = false, timer;
+    let formDirty = false, working = false, timer, lastRetention = 0;
     root.querySelectorAll('[data-field]').forEach(el => el.addEventListener('change', () => { formDirty = true; }));
     const fields = ['audio', 'resolution', 'dailyCount', 'monthlyCount', 'perJobUSD', 'dailyUSD', 'monthlyUSD', 'retentionDays', 'storageMB'];
     function current() { try { return d.target(); } catch { return null; } }
     function render(force = false) {
         const db = d.cached(), c = config(db), target = current();
         $('[data-character]').textContent = target ? `Companion: ${target.name}` : 'Open a saved companion chat.';
+        $('[data-availability]').textContent = d.availability().reason;
         if (!formDirty || force) {
             fields.forEach(k => $(`[data-field="${k}"]`).value = c[k] ?? '');
             $('[data-field="enabled"]').checked = !!c.characters[target?.avatar];
@@ -67,9 +69,17 @@ export async function mountCompanionVideo(host) {
     }
     async function tick() {
         clearTimeout(timer);
-        try { await engine.tick(); render(); }
-        catch (e) { status(safeError(e)); }
-        finally { timer = setTimeout(tick, 15000); }
+        try {
+            if (working || host.isGenerating()) return;
+            const db = await d.read();
+            if (db.jobs.some(j => activeJob(j) || j.state === 'ready' || j.state === 'delivered' && !j.providerCleaned)) await engine.tick();
+            else if (db.jobs.some(j => j.kind === 'companion' && (j.saved || j.source)) && Date.now() - lastRetention > 3600000) {
+                await engine.retention(); lastRetention = Date.now();
+            }
+            $('[data-background]').textContent = ''; render();
+        }
+        catch (e) { $('[data-background]').textContent = `Background check: ${safeError(e)}`; }
+        finally { timer = setTimeout(tick, d.cached().jobs.some(activeJob) ? 15000 : 60000); }
     }
     function run(fn) { return async () => {
         if (working) return; working = true;
@@ -93,13 +103,22 @@ export async function mountCompanionVideo(host) {
             db.videoConfig = cfg;
             db.lastVideoQuote = { still: t.still.usd, video: t.videoUSD, total, at: Date.now() };
         });
-        render(true); status('Prices checked and initial spending limits saved. Enable this companion and save settings when ready.');
+        // A quote must never uncheck an unsaved Enable choice or reset other form edits.
+        const draft = Object.fromEntries(fields.map(k => [k, $(`[data-field="${k}"]`).value]));
+        const enabled = $('[data-field="enabled"]').checked;
+        d.assertTarget(target);
+        render(true);
+        fields.forEach(k => { if (draft[k] !== '') $(`[data-field="${k}"]`).value = draft[k]; });
+        $('[data-field="enabled"]').checked = enabled; formDirty = true;
+        status('Prices checked and initial spending limits saved. Your selections are preserved. Press Save video settings to apply them.');
     });
     $('[data-action="save"]').onclick = run(async () => {
         const target = d.target(); d.assertTarget(target);
+        const enabled = $('[data-field="enabled"]').checked;
         const values = Object.fromEntries(fields.map(k => [k, ['audio', 'resolution'].includes(k) ? $(`[data-field="${k}"]`).value : $(`[data-field="${k}"]`).value === '' ? null : Number($(`[data-field="${k}"]`).value)]));
         await d.update(db => {
-            const c = config(db), enabled = $('[data-field="enabled"]').checked;
+            d.assertTarget(target);
+            const c = config(db);
             // Evidence belongs to a completed API test, never to a model-generated claim.
             const verified = db.jobs.some(j => j.mode === 'silent' && j.saved?.verifiedAt && j.evidence?.heard === 'silent');
             const next = validateConfig({ ...c, ...values, silentVerified: c.silentVerified || verified,
@@ -107,7 +126,7 @@ export async function mountCompanionVideo(host) {
             if (enabled && (next.dailyUSD === null || next.monthlyUSD === null)) throw new Error('Check live prices first to set the spending limits.');
             db.videoConfig = next;
         });
-        render(true); status('Video settings saved. New jobs can be requested in chat; existing paid jobs continue recovery.');
+        render(true); status(`Video settings saved. ${d.availability().reason}`);
     });
     $('[data-action="resume"]').onclick = run(async () => { await engine.tick(); status('Saved jobs checked. Completed clips are delivered when their original chat is open and idle.'); });
     $('[data-action="report"]').onclick = () => { $('[data-report]').hidden = false; $('[data-report]').value = d.report(); };
@@ -123,10 +142,18 @@ export async function mountCompanionVideo(host) {
         }, required: ['subject', 'scene', 'motion', 'aspect_ratio'], additionalProperties: false },
         shouldRegister: () => d.ready(),
         action: async args => {
+            d.recordCheck('lastToolAttempt', { at: new Date().toISOString(), state: 'preflight' });
+            try {
+            if (!d.ready()) throw new Error(d.availability().reason);
             const result = await engine.request(args, await d.turn());
             if (!result) throw new Error('A video submission is in progress. Reply normally; no extra video started.');
+            d.recordCheck('lastToolAttempt', { at: new Date().toISOString(), state: result.state, id: result.id });
             render();
             return JSON.stringify({ ...result, instruction: 'Announce the forthcoming video briefly in your own voice and finish your reply now. It will render after your reply is saved and arrive separately. Do not call another video or image tool for this clip.' });
+            } catch (e) {
+                d.recordCheck('lastToolAttempt', { at: new Date().toISOString(), state: 'failed-before-job-or-submission', error: safeError(e) });
+                status(`Video request: ${safeError(e)}`); throw e;
+            }
         }, formatMessage: () => 'Preparing a video request…',
     });
     host.eventSource.on(host.event_types.GENERATION_STOPPED, () => { d.stop().catch(e => status(safeError(e))); });

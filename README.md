@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.7.0 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.7.1 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -30,7 +30,7 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.7.0**. Avoid keeping another old SillyTavern tab open while changing settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.7.1**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
@@ -258,3 +258,8 @@ See [VIDEO-TEST-RIG.md](VIDEO-TEST-RIG.md) for the exact phone acceptance steps,
 The opt-in companion tool is now included. It creates a fresh reference-based still, waits for a saved text announcement before spending, then delivers an asynchronous video to the original chat. Supports the companion, the human user, and both together. Default five seconds, ambient audio, lowest advertised resolution; six/day and ninety/rolling thirty days, with quote-derived editable spending ceilings. No card edits, lip-sync or pregnancy stages.
 
 See [COMPANION-VIDEO.md](COMPANION-VIDEO.md) for phone setup, implementation map, limits and live acceptance checks. Automated coverage is passing; live API and Android playback remain unverified.
+
+
+## 0.7.1 — Video enable controls and diagnostics
+
+Checking prices now preserves the unsaved Enable checkbox and form selections. Save explicitly confirms video tool readiness, with an actionable reason if unavailable. Reports include saved availability, whether the video tool was invoked, and the endpoint behind any request timeout. Empty queues no longer run full recovery every 15 seconds; idle checks run once per minute and background errors do not replace save confirmations. Image tool descriptions direct video requests to VeniceCreateVideo. Existing references, budgets and cards are preserved.

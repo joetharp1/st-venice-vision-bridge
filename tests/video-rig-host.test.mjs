@@ -128,3 +128,13 @@ test('retention deletes only owned files, protects a newly selected reference, a
     assert.equal(f.server.attachments.some(a => a.url === asset.path), false);
     assert.equal(f.server.disabled_attachments.includes(asset.path), false);
 });
+test('network timeout identifies its endpoint without exposing credentials and is not retried', async () => {
+    const f = await fixture(); let attempts = 0;
+    f.provider(async () => { attempts++; throw Object.assign(new Error('signal timed out'), { name: 'TimeoutError' }); });
+    await assert.rejects(f.d.quote({ model: core.VIDEO_MODEL }), /Venice \/video\/quote: signal timed out/);
+    assert.equal(attempts, 1);
+    const report = JSON.parse(f.d.report());
+    assert.equal(report.checks.lastFailure.operation, 'Venice /video/quote');
+    assert.match(report.checks.lastFailure.error, /TimeoutError \[network\]/);
+    assert.equal(JSON.stringify(report).includes('fixture-secret'), false);
+});

@@ -7,6 +7,21 @@ import { characterKey, isVeniceConnection } from './core.mjs';
 
 export function createCompanionHost(host) {
     const d = createRigHost(host), stopped = new Set();
+    const baseReport = d.report;
+    function availability() {
+        const c = host.getContext(), s = host.getSettings(), cfg = config(d.cached());
+        const enabled = cfg.characters[characterKey(c)] === true;
+        const reason = c.groupId || !c.chatId || !characterKey(c) ? 'Open a saved one-to-one companion chat.'
+            : !s.enabled ? 'Venice Image Bridge is disabled.'
+            : !isVeniceConnection(c) ? 'Select the Venice chat connection.'
+            : !enabled ? 'Video is OFF for this companion. Tick Enable video and press Save video settings.'
+            : !s.characters?.[characterKey(c)] ? 'Enable the image bridge for this companion so it can prepare video stills.'
+            : !c.chatCompletionSettings?.function_calling ? 'Enable function calling in Chat Completion settings.'
+            : !c.chatCompletionSettings?.media_inlining ? 'Enable inline images/media in Chat Completion settings.'
+            : !host.extension_settings['st-venice-image']?.api_key ? 'Configure the existing Venice image API key.'
+            : cfg.dailyUSD === null || cfg.monthlyUSD === null ? 'Check live prices to initialise the video budget.' : null;
+        return { ready: reason === null, companionEnabled: enabled, reason: reason || 'Video tool READY — VeniceCreateVideo is available to this companion.' };
+    }
     const currentMatches = target => {
         try { const c = d.target(); return c.avatar === target.avatar && c.chatId === target.chatId; } catch { return false; }
     };
@@ -36,11 +51,9 @@ export function createCompanionHost(host) {
             const id = await digest(new Blob([JSON.stringify([target.avatar, target.chatId, userIndex, user.send_date, user.mes])]));
             return { id, target, userIndex, created: Date.now() };
         },
-        ready: () => {
-            const c = host.getContext(), s = host.getSettings();
-            return !c.groupId && !!c.chatId && s.enabled && isVeniceConnection(c)
-                && config(d.cached()).characters[characterKey(c)] === true;
-        },
+        ready: () => availability().ready,
+        availability,
+        report: () => JSON.stringify({ ...JSON.parse(baseReport()), companionVideo: '0.7.1', availability: availability() }, null, 2),
         announcement: async job => {
             if (stopped.has(job.id)) return 'abort';
             if (host.isGenerating()) return null;

@@ -71,6 +71,10 @@ export function createRigHost(host) {
         return navigator.locks.request(`${prefix}:${name}`, optional ? { ifAvailable: true } : {}, held => held ? action() : undefined);
     };
     const request = async (url, options = {}, timeout = 30000) => {
+        const operation = url.startsWith(API + '/') ? `Venice ${url.slice(API.length).split('?')[0]}`
+            : url.startsWith('/api/') ? `SillyTavern ${url}` : 'Media download';
+        checks.lastRequest = { operation, started: new Date().toISOString() };
+        try {
         const r = await fetch(url, { ...options, signal: AbortSignal.timeout(timeout) });
         if (!r.ok) {
             const text = (await r.text()).slice(0, 2000);
@@ -86,11 +90,27 @@ export function createRigHost(host) {
             error.providerFailure = body?.error?.type === 'provider_content_policy';
             throw error;
         }
+        checks.lastSuccess = { operation, at: new Date().toISOString() };
         return r;
+        } catch (original) {
+            const error = Object.assign(new Error(`${operation}: ${original.message || 'Request failed'}`), {
+                name: original.name || 'Error', definiteRejection: original.definiteRejection,
+                refunded: original.refunded, providerFailure: original.providerFailure,
+            });
+            checks.lastFailure = { operation, at: new Date().toISOString(), error: safeError(error) };
+            throw error;
+        }
     };
     const post = async (path, body) => request(path, { method: 'POST', headers: host.getRequestHeaders(), body: JSON.stringify(body) });
     const serverSettings = async () => {
-        const data = await (await post('/api/settings/get', {})).json();
+        const response = await post('/api/settings/get', {});
+        let data;
+        try { data = await response.json(); }
+        catch (original) {
+            const error = Object.assign(new Error(`SillyTavern /api/settings/get response: ${original.message}`), { name: original.name || 'Error' });
+            checks.lastFailure = { operation: 'SillyTavern /api/settings/get', at: new Date().toISOString(), error: safeError(error) };
+            throw error;
+        }
         if (typeof data.settings !== 'string') throw new Error('Unexpected ST settings response.');
         return JSON.parse(data.settings).extension_settings || {};
     };

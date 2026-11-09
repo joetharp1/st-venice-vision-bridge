@@ -60,7 +60,7 @@ try {
         if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true });
         throw error;
     }
-    console.log(`Installed 0.7.0.${backup ? ` Previous bridge saved at ${backup}.` : ''}`);
+    console.log(`Installed 0.7.1.${backup ? ` Previous bridge saved at ${backup}.` : ''}`);
     console.log('Reload SillyTavern. Enable the image tool for the intended character in Extensions > Venice Image Bridge.');
     console.log('Ensure the third-party extensions directory is on persistent Docker storage before container recreation.');
 } catch (error) {

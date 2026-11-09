@@ -158,7 +158,7 @@ export function createBridge(deps) {
     function tool() {
         return {
             name: TOOL_NAME, displayName: 'Create a Venice image',
-            description: 'Create and share one image in the current chat. Use when the user requests a picture, or when sharing a picture is appropriate to the conversation and their preferences. Write the full visual prompt yourself. For a picture of yourself, use VeniceCreateSelfPortrait when available: it attaches your fixed reference face. Use this tool for other subjects or when no reference portrait is configured. Never claim to have sent an image unless this tool succeeds. Only one image attempt per user turn; after a result or failure, reply in words.',
+            description: 'Still images only. For a video or moving clip, use VeniceCreateVideo when available; do not substitute a photo. Create and share one image in the current chat. Use when the user requests a picture, or when sharing a picture is appropriate to the conversation and their preferences. Write the full visual prompt yourself. For a picture of yourself, use VeniceCreateSelfPortrait when available: it attaches your fixed reference face. Use this tool for other subjects or when no reference portrait is configured. Never claim to have sent an image unless this tool succeeds. Only one image attempt per user turn; after a result or failure, reply in words.',
             parameters: {
                 type: 'object', properties: {
                     prompt: { type: 'string', description: 'Complete visual description, up to 1500 characters.' },
@@ -176,7 +176,7 @@ export function createBridge(deps) {
     }
     function portraitTool() {
         return { name: PORTRAIT_TOOL, displayName: 'Create a self-portrait',
-            description: 'Create and share a new picture of yourself using your fixed reference portrait, attached automatically. Describe the new scene, clothes, pose and expression; preserve your identity. Use this for pictures of yourself instead of VeniceCreateImage. Only your own configured reference can be used. One image attempt per user turn across both image tools. After success or failure, reply in words. Inspect the returned image before describing its actual details.',
+            description: 'Still photographs only. For a video request use VeniceCreateVideo when available; its starting still is prepared automatically. Create and share a new picture of yourself using your fixed reference portrait, attached automatically. Describe the new scene, clothes, pose and expression; preserve your identity. Use this for pictures of yourself instead of VeniceCreateImage. Only your own configured reference can be used. One image attempt per user turn across both image tools. After success or failure, reply in words. Inspect the returned image before describing its actual details.',
             parameters: { type: 'object', properties: { prompt: { type: 'string', description: 'New scene, pose, clothes and expression, up to 1500 characters. The original face reference is attached automatically.' } }, required: ['prompt'], additionalProperties: false },
             shouldRegister: () => portraitReady() && turnAvailable(), action: args => generate(args, false, true), formatMessage: () => 'Creating a picture using my reference portrait…' };
     }
@@ -187,7 +187,7 @@ export function createBridge(deps) {
     }
     function userPortraitTool() {
         return { name: USER_PORTRAIT_TOOL, displayName: 'Create a picture of the user or both of you',
-            description: 'Create a picture of the human user using their saved reference. Set include_character to true for a picture of the user and yourself together, using both saved references. Describe the scene; reference identities are attached automatically. One image attempt per user turn shared with the other image tools. After success or failure, reply in words.',
+            description: 'Still photographs only. For a video of the user or both people, use VeniceCreateVideo when available. Create a picture of the human user using their saved reference. Set include_character to true for a picture of the user and yourself together, using both saved references. Describe the scene; reference identities are attached automatically. One image attempt per user turn shared with the other image tools. After success or failure, reply in words.',
             parameters: { type: 'object', properties: {
                 prompt: { type: 'string', description: 'Scene, pose, clothing and expression, up to 1500 characters.' },
                 include_character: { type: 'boolean', description: 'True to include the current companion with the human user; false for the human user alone.' },

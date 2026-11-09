@@ -158,7 +158,7 @@ jQuery(() => {
             </div>
             <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div><div id="venice_bridge_user_portrait"></div>
             <div id="venice_video_rig_launcher" class="menu_button">Open manual video connection test</div>
-            <small>Version 0.7.0 · Built for SillyTavern 1.19.0</small>
+            <small>Version 0.7.1 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -250,5 +250,5 @@ jQuery(() => {
         toastr.warning('Companion video could not load: ' + error.message);
     });
     refresh();
-    console.info('[Venice Image Bridge] 0.7.0 loaded');
+    console.info('[Venice Image Bridge] 0.7.1 loaded');
 });
