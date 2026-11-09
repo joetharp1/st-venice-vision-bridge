@@ -1,10 +1,10 @@
 # Video connection test 0.1.0 — shipped with Image Bridge 0.6.6
 
-This is a manual acceptance rig, not the companion video feature. It adds no model tools, trigger instructions, character edits, speech, lip-sync, scheduler or budget controls. It leaves image prompts, references, ratios, models and ordinary image generation unchanged. The test panel loads on request; saved jobs cause it to load again on startup for recovery.
+This document describes the manual acceptance rig. The production companion feature added in 0.7.0 has its own panel and documentation. It adds no model tools, trigger instructions, character edits, speech, lip-sync, scheduler or budget controls. It leaves image prompts, references, ratios, models and ordinary image generation unchanged. The test panel loads on request; saved jobs cause it to load again on startup for recovery.
 
 ## Phone acceptance sequence
 
-1. Update Venice Image Bridge through ST's extension manager, reload and check Version 0.6.6. Use one device and one active ST tab for these tests.
+1. Update Venice Image Bridge through ST's extension manager, reload and check Version 0.7.0 or later. Use one device and one active ST tab for these tests.
 2. Open the intended saved one-to-one chat. In Image Bridge press **Open manual video connection test**.
 3. Choose **Use latest chat picture** or select the approved still from the phone. The rig intentionally allows an existing audition still; production's same-turn-only source rule is not a model tool in this rig. Inspect the preview and tick the face/body approval box.
 4. Select **Silent — test API switch**. Press **Check connection and quote — no generation**. It reads the live video catalogue, requires the exact Wan 2.7 Enhanced I2V model and five-second support, chooses the lowest advertised resolution, and checks `supportsAudioConfig`. A missing capability means silent is unavailable; no paid request is sent. Switch to Ambient if needed. There is no audio stripping or re-encode.
@@ -31,9 +31,9 @@ Closing during the HTTP submission, before its queue ID is confirmed and saved, 
 
 Venice's published conversion is 100 credits = US$1. Joe's Studio audition cost 55 credits = US$0.55. Ninety such video-only clips are 4,950 credits = US$49.50; six are 330 credits = US$3.30. Starting stills add to these figures, and the authenticated API quote may differ from Studio. The eventual production settings target six submissions/day, ninety per rolling thirty days, two active jobs and a US$3 combined still+video job ceiling. The final spend ceilings must accommodate still costs and the measured API quote, rather than silently treating US$50 as enough for ninety complete jobs. No rolling-budget controls are implemented here.
 
-## Stage 3 still gate
+## Current feature scope
 
-The published bridge has a fixed reference portrait per character, but no defined pregnancy-stage selector or stage-3 visual specification. The exact approved stage description/reference is still required. Test that still using the existing image bridge before animating it; do not infer stage 3 as a particular month or silently alter a character card/reference.
+The companion tool is now available separately in [COMPANION-VIDEO.md](COMPANION-VIDEO.md). This document describes the manual test panel. The stage-3 requirement has been removed at Joe’s instruction.
 
 ## Validation
 

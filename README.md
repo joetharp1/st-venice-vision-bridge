@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.6.6 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.7.0 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -30,7 +30,7 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.6.6**. Avoid keeping another old SillyTavern tab open while changing settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.7.0**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
@@ -46,7 +46,7 @@ No terminal commands, new server plugin, new credentials or core edits are neede
 
 The old **Venice Image Generation** dropdown, `/vimg`, and its message buttons keep their original settings and static choices. Use the bridge's new picker and manual button for the expanded catalogue. No duplicate extension installation is needed.
 
-The ordinary image catalogue offers text-to-image models. Reference portraits have a separate editing-model catalogue below. Upscale, video and background-removal operations are outside this update. `bria-bg-remover` is excluded even though Venice lists it under image. Offline models are labelled; a missing/offline selected model fails explicitly rather than silently spending on a replacement.
+The ordinary image catalogue offers text-to-image models. Reference portraits have a separate editing-model catalogue below. Upscale and background-removal operations are outside this image selector. Companion video has a separate opt-in panel. `bria-bg-remover` is excluded even though Venice lists it under image. Offline models are labelled; a missing/offline selected model fails explicitly rather than silently spending on a replacement.
 
 The last catalogue and selection are cached with extension settings, without copying the API key. A failed refresh retains them. Old API keys restricted to private models may reject anonymized models with HTTP 403; selecting a model does not change those restrictions. Generation failures are never retried automatically. Prompts retain the bridge's existing 1500-character limit.
 
@@ -250,4 +250,11 @@ Open **Venice Image Bridge → Open manual video connection test**. This is a ma
 
 Job records and queue IDs are verified in ST server settings. Reload/closed-tab recovery retrieves the same job without paid resubmission. Two profile-wide execution slots and serialized submissions prevent duplicate or overlapping ambiguous submissions on one browser/device. MP4 bytes are uploaded, read back and hash-verified, registered outside automatic retrieval, then posted only into the captured chat. Unknown submission outcomes are held and reported.
 
-See [VIDEO-TEST-RIG.md](VIDEO-TEST-RIG.md) for the exact phone acceptance steps, recovery limitations, pricing units, stage-3 still gate and validation evidence. Production budget/retention logic, model wiring and trigger rules remain outside this rig. Chromium launch was blocked in development; actual Android playback and Venice API behavior remain live acceptance checks.
+See [VIDEO-TEST-RIG.md](VIDEO-TEST-RIG.md) for the exact phone acceptance steps, recovery limitations, pricing units and validation evidence. Production budget/retention logic, model wiring and trigger rules remain outside this rig. Chromium launch was blocked in development; actual Android playback and Venice API behavior remain live acceptance checks.
+
+
+## 0.7.0 — Companion video
+
+The opt-in companion tool is now included. It creates a fresh reference-based still, waits for a saved text announcement before spending, then delivers an asynchronous video to the original chat. Supports the companion, the human user, and both together. Default five seconds, ambient audio, lowest advertised resolution; six/day and ninety/rolling thirty days, with quote-derived editable spending ceilings. No card edits, lip-sync or pregnancy stages.
+
+See [COMPANION-VIDEO.md](COMPANION-VIDEO.md) for phone setup, implementation map, limits and live acceptance checks. Automated coverage is passing; live API and Android playback remain unverified.

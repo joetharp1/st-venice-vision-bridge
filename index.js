@@ -158,7 +158,7 @@ jQuery(() => {
             </div>
             <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div><div id="venice_bridge_user_portrait"></div>
             <div id="venice_video_rig_launcher" class="menu_button">Open manual video connection test</div>
-            <small>Version 0.6.6 · Built for SillyTavern 1.19.0</small>
+            <small>Version 0.7.0 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -240,7 +240,15 @@ jQuery(() => {
         } finally { videoRigLoading = false; }
     }
     $('#venice_video_rig_launcher').on('click', openVideoRig);
-    if (extension_settings['venice-video-rig-v1']?.jobs?.length) openVideoRig();
+    if (extension_settings['venice-video-rig-v1']?.jobs?.some(job => job.kind !== 'companion')) openVideoRig();
+    import('./video-ui.mjs').then(({ mountCompanionVideo }) => mountCompanionVideo({
+        extension_settings, getSettings: settings, getContext, saveSettings, getRequestHeaders,
+        getMessageTimeStamp, isGenerating, hasPendingFileAttachment, bridge, loadReference,
+        eventSource, event_types, MEDIA_TYPE, MEDIA_SOURCE, MEDIA_DISPLAY,
+    })).catch(error => {
+        console.warn('[Companion video] Could not load:', error.message);
+        toastr.warning('Companion video could not load: ' + error.message);
+    });
     refresh();
-    console.info('[Venice Image Bridge] 0.6.6 loaded');
+    console.info('[Venice Image Bridge] 0.7.0 loaded');
 });

@@ -198,6 +198,11 @@ export function createBridge(deps) {
     }
 
     return { userPortraitReady, userPortraitTool, generateUserPortraitManual: args => generate(args, true, args?.include_character === true ? 'together' : 'user'), portraitReady, portraitTool, generatePortraitManual: args => generate(args, true, true), adapt, generate: args => generate(args), generateManual: args => generate(args, true), tool, ready, manualReady, cancel,
+        withVideoStillLock: async action => {
+            if (busy || initiation || initiationOwner) throw new Error('An image is already being prepared. Video will wait.');
+            busy = true;
+            try { return await action(); } finally { busy = false; }
+        },
         initiationVersion: 1, beginInitiation,
         claimInitiation: owner => {
             if (busy || initiationOwner) throw new Error('Image bridge already has an owner.');

@@ -5,16 +5,17 @@ export const MAX_VIDEO_BYTES = 32 * 1024 * 1024;
 export const RIG_KEY = 'venice-video-rig-v1';
 export const DEFAULT_MOTION = 'Starting from the supplied frame, she blinks naturally, slowly tilts her head a few degrees, and gives a small closed-mouth smile. The camera stays fixed. She finishes looking into the camera. Preserve the existing composition, lighting, clothing and background throughout. Background ambience only; no speech or music.';
 export const money = usd => `US$${Number(usd).toFixed(2)} · ${Number((usd * 100).toFixed(2))} credits`;
-export const activeJob = j => ['submitting', 'uncertain', 'queued', 'saving'].includes(j.state);
+export const activeJob = j => ['awaiting_reply', 'prepared', 'preparing', 'still_ready', 'submitting', 'uncertain', 'queued', 'saving'].includes(j.state);
 export const clone = value => structuredClone(value);
 
-export function planVideo(catalogue, mode, width, height, prompt) {
+export function planVideo(catalogue, mode, width, height, prompt, duration = 5, chosenResolution = null) {
     const model = catalogue?.data?.find(m => m.id === VIDEO_MODEL);
     if (!model || model.model_spec?.offline || model.offline) throw new Error('Wan 2.7 Enhanced image-to-video is not available in this account catalogue.');
     const spec = model.model_spec || {}, c = spec.constraints || {};
     const durations = c.durations, resolutions = c.resolutions;
-    if (!Array.isArray(durations) || !durations.includes('5s') || !Array.isArray(resolutions)) throw new Error('Catalogue did not confirm the five-second test settings. Copy the report; no paid submission made.');
-    const resolution = [...resolutions].filter(x => /^\d+p$/.test(x)).sort((a, b) => parseInt(a) - parseInt(b))[0];
+    if (![5, 10, 15].includes(duration) || !Array.isArray(durations) || !durations.includes(`${duration}s`) || !Array.isArray(resolutions)) throw new Error('Catalogue did not confirm the requested duration. No paid submission made.');
+    const resolution = chosenResolution || [...resolutions].filter(x => /^\d+p$/.test(x)).sort((a, b) => parseInt(a) - parseInt(b))[0];
+    if (chosenResolution && !resolutions.includes(chosenResolution)) throw new Error('Selected video resolution is unavailable.');
     if (!resolution) throw new Error('Catalogue did not supply a supported resolution.');
     if (!Number.isFinite(width) || !Number.isFinite(height) || width < 256 || height < 256 || width * height > 24000000) throw new Error('Use a still at least 256 pixels on each side, up to 24 megapixels.');
     if (!['silent', 'ambient'].includes(mode)) throw new Error('Select silent-test or ambient mode.');
@@ -23,7 +24,7 @@ export function planVideo(catalogue, mode, width, height, prompt) {
     if (mode === 'silent' && !audioConfig) throw new Error('Silent mode unavailable: this catalogue does not advertise supportsAudioConfig. Use ambient; no stripping or silent fallback.');
     const limit = Math.min(1500, Number(c.prompt_character_limit) || 2500);
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > limit) throw new Error(`Motion prompt must contain 1–${limit} characters.`);
-    const params = { model: VIDEO_MODEL, duration: '5s', resolution };
+    const params = { model: VIDEO_MODEL, duration: `${duration}s`, resolution };
     if (audioConfig) params.audio = mode === 'ambient';
     if (Array.isArray(c.aspect_ratios) && c.aspect_ratios.length) {
         const ratio = c.aspect_ratios.find(s => {
@@ -68,7 +69,7 @@ export function createVideoRig(d) {
             const id = d.uuid();
             await d.update(db => {
                 if (db.jobs.some(j => j.ticketId === ticket.id)) throw new Error('This quoted test has already been submitted.');
-                if (db.jobs.some(j => ['submitting', 'uncertain'].includes(j.state) && now() - j.created < JOB_TTL)) throw new Error('An earlier submission is unresolved. No second ambiguous submission is allowed.');
+                if (db.jobs.some(j => ['preparing', 'submitting', 'uncertain'].includes(j.state) && now() - j.created < JOB_TTL)) throw new Error('An earlier submission is unresolved. No second ambiguous submission is allowed.');
                 if (db.jobs.filter(j => activeJob(j) && now() - j.created < JOB_TTL).length >= 2) throw new Error('Two video jobs are already active across this profile.');
                 db.jobs.push({ id, ticketId: ticket.id, target: clone(ticket.target), created: now(),
                     state: 'submitting', model: ticket.plan.params.model, params: clone(ticket.plan.params),

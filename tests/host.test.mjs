@@ -31,7 +31,7 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
         if (!controls.has(selector)) controls.set(selector, { properties: {}, handlers: {}, prop(name, value) { this.properties[name] = value; return this; }, text(value) { this.textValue = value; return this; }, val(value) { this.value = value; return this; }, append(value) { this.html = value; return this; }, on(name, handler) { this.handlers[name] = handler; return this; } });
         return controls.get(selector);
     };
-    const sandbox = vm.createContext({ location: { origin: 'https://st.test' }, document: { getElementById: () => ({ value: '' }) }, $, jQuery: callback => callback(), console: { info() {} }, crypto: { randomUUID: () => 'test-id' }, toastr: { error: assert.fail },
+    const sandbox = vm.createContext({ location: { origin: 'https://st.test' }, document: { getElementById: () => ({ value: '' }) }, $, jQuery: callback => callback(), console: { info() {}, warn: console.warn }, crypto: { randomUUID: () => 'test-id' }, toastr: { error: assert.fail, warning: assert.fail },
         fetch: async () => ({ ok: true, json: async () => ({ images: ['FAKE'] }), blob: async () => new Blob([Uint8Array.from(atob(png.split(',')[1]), c => c.charCodeAt(0))]) }) });
     const exportsByImport = {
         '../../../extensions.js': { extension_settings, getContext: () => context },
@@ -50,7 +50,17 @@ test('ST 1.19 host contract: initialize UI, enable character, invoke tool, rende
         './portraits.mjs': { loadPortrait: async () => png, USER_PORTRAIT_KEY: '__human_reference__' },
         './portraits-ui.mjs': { mountPortraits() { return { useAlbumPortrait() {} }; } },
     };
-    const module = new vm.SourceTextModule(await readFile(new URL('../index.js', import.meta.url), 'utf8'), { context: sandbox });
+    const module = new vm.SourceTextModule(await readFile(new URL('../index.js', import.meta.url), 'utf8'), { context: sandbox,
+        importModuleDynamically: async specifier => {
+            assert.equal(specifier, './video-ui.mjs');
+            const optional = new vm.SyntheticModule(['mountCompanionVideo'], function () {
+                this.setExport('mountCompanionVideo', async deps => {
+                    assert.equal(deps.bridge, vm.runInContext("globalThis[Symbol.for('ava.veniceBridge')]", sandbox));
+                    assert.equal(typeof deps.loadReference, 'function');
+                });
+            }, { context: sandbox });
+            await optional.link(() => {}); await optional.evaluate(); return optional;
+        } });
     await module.link(specifier => {
         const values = exportsByImport[specifier];
         assert.ok(values, `Unexpected import ${specifier}`);

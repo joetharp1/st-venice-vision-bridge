@@ -32,6 +32,7 @@ async function fixture() {
             const body = op.body ? JSON.parse(op.body) : {};
             if (url === '/api/settings/get') return response({ settings: JSON.stringify({ extension_settings: server }) });
             if (url === '/api/files/upload') { const path = '/user/files/' + body.name; files.set(path, Buffer.from(body.data, 'base64')); return response({ path }); }
+            if (url === '/api/files/delete') { files.delete(body.path); return response({}); }
             if (url === '/api/files/verify') return response(Object.fromEntries(body.urls.map(u => [u, files.has(u)])));
             if (url === '/api/chats/get') return response([{ chat_metadata: {} }, ...chats[body.file_name]]);
             if (files.has(url)) return response(wrongBytes ? Buffer.from('bad') : files.get(url), 200, 'video/mp4');
@@ -105,4 +106,25 @@ test('explicit provider rejection is distinguishable from authentication outage'
     await assert.rejects(f.d.quote({}), e => { assert.equal(e.providerFailure, false); assert.ok(!e.message.includes('fixture-secret')); return true; });
     f.provider(async () => new Response(JSON.stringify({error:{message:'Rejected',type:'provider_content_policy',credits_refunded:true}}), {status:422}));
     await assert.rejects(f.d.retrieve(job()), e => e.providerFailure === true && e.refunded === true);
+});
+
+
+test('companion delivery uses its captured name and short text, with no duplicate after reopening', async () => {
+    const f = await fixture(), j = { ...job(), kind: 'companion' };
+    j.saved = await f.d.saveVideo(j, mp4());
+    await f.d.attach(j); await f.reopen().attach(j);
+    assert.equal(f.context.chat.length, 1);
+    assert.equal(f.context.chat[0].name, 'Ava'); assert.equal(f.context.chat[0].is_system, false);
+    assert.equal(f.context.chat[0].mes, 'Video.');
+});
+test('retention deletes only owned files, protects a newly selected reference, and unregisters deleted media', async () => {
+    const f = await fixture(), j = { ...job(), id: 'owned', fileName: 'venice_video_owned.mp4', kind: 'companion' };
+    const asset = await f.d.saveVideo(j, mp4());
+    await assert.rejects(f.d.deleteOwnedAsset(j, { path: '/user/files/someone_else.mp4' }), /outside this video job/);
+    f.ext['st-venice-vision-bridge'] = { portraits: { Ava: { url: asset.path } } }; await f.host.saveSettings();
+    assert.equal(await f.d.deleteOwnedAsset(j, asset), false); assert.ok(f.files.has(asset.path));
+    f.ext['st-venice-vision-bridge'].portraits = {}; await f.host.saveSettings();
+    assert.equal(await f.d.deleteOwnedAsset(j, asset), true); assert.equal(f.files.has(asset.path), false);
+    assert.equal(f.server.attachments.some(a => a.url === asset.path), false);
+    assert.equal(f.server.disabled_attachments.includes(asset.path), false);
 });

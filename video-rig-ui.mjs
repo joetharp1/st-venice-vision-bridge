@@ -8,7 +8,7 @@ export function mountVideoRig(host) {
     const root = document.createElement('div'); root.id = 'venice_video_rig';
     root.innerHTML = `
       <hr><h4>Video connection test · 0.1.0</h4>
-      <p>Manual tests only. No companion video tool, automatic videos or character changes.</p>
+      <p>This panel runs manual connection tests. The separate Companion video panel controls automatic clips.</p>
       <p>Use one device for these tests. Jobs are saved to this ST account; browser locks coordinate tabs on this device.</p>
       <button class="menu_button" type="button" data-action="latest">Use latest chat picture</button>
       <label>Or choose the approved still<input type="file" accept="image/png,image/jpeg,image/webp" data-input="still" style="display:block;width:100%;max-width:100%"></label>

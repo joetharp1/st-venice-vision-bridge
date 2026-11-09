@@ -98,6 +98,7 @@ export function createRigHost(host) {
         const all = await serverSettings();
         cached = clone(all[RIG_KEY] || { version: 1, jobs: [] });
         if (!Array.isArray(cached.jobs)) throw new Error('Saved rig record is invalid.');
+        settings[RIG_KEY] = clone(cached);
         return clone(cached);
     };
     const update = fn => lock('persist', async () => {
@@ -117,7 +118,7 @@ export function createRigHost(host) {
         const key = settings['st-venice-image']?.api_key;
         if (!key) throw new Error('Configure the existing Venice Image Generation API key first.');
         // Key is used only for this fixed API origin; never sent to download URLs or persisted in jobs.
-        return request(API + path, { method: body === undefined ? 'GET' : 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, path === '/video/retrieve' ? 60000 : 45000);
+        return request(API + path, { method: body === undefined ? 'GET' : 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, path.startsWith('/image/') ? 120000 : path === '/video/retrieve' ? 60000 : 45000);
     }
     const target = () => {
         const c = host.getContext(), avatar = c.characters?.[c.characterId]?.avatar;
@@ -149,7 +150,7 @@ export function createRigHost(host) {
             const persisted = await serverSettings();
             if (persisted[RIG_KEY]) settings[RIG_KEY] = clone(persisted[RIG_KEY]);
             const merged = new Map([...(persisted.attachments || []), ...(settings.attachments || [])].map(a => [a.url, a]));
-            merged.set(path, { url: path, name: `Video Test — ${job.id}.mp4`, size: bytes, created: Date.now(), venice_video_rig: { id: job.id, avatar: job.target.avatar, chatId: job.target.chatId } });
+            merged.set(path, { url: path, name: path.split('/').pop(), size: bytes, created: Date.now(), venice_video_rig: { id: job.id, avatar: job.target.avatar, chatId: job.target.chatId } });
             settings.attachments = [...merged.values()];
             settings.disabled_attachments = [...new Set([...(persisted.disabled_attachments || []), ...(settings.disabled_attachments || []), path])];
             try {
@@ -160,8 +161,20 @@ export function createRigHost(host) {
         });
     }
     const savedChat = async job => (await post('/api/chats/get', { avatar_url: job.target.avatar, file_name: job.target.chatId })).json();
+    const saveAsset = async (job, blob, fileName) => {
+        const sha256 = await digest(blob);
+        const uploaded = await (await post('/api/files/upload', { name: fileName, data: (await dataURL(blob)).split(',')[1] })).json();
+        const path = localFile(uploaded.path);
+        const verified = await (await post('/api/files/verify', { urls: [path] })).json();
+        if (verified[path] !== true) throw new Error('Uploaded media was not found by ST file verification.');
+        const returned = await (await request(path, { cache: 'no-store' })).blob();
+        if (returned.size !== blob.size || await digest(returned) !== sha256) throw new Error('Uploaded media bytes do not match. Provider copy retained.');
+        await registerFile(job, path, blob.size);
+        return { path, bytes: blob.size, sha256, verifiedAt: Date.now() };
+    };
     return {
         profile, lock, read, update, target, assertTarget, now: Date.now, uuid: () => crypto.randomUUID(),
+        api, request, savedChat, saveAsset,
         backupReceipt, clearReceipt, receipts, cached: () => clone(cached),
         recordCheck: (key, value) => { checks[key] = value; },
         catalogue: async () => {
@@ -223,9 +236,11 @@ export function createRigHost(host) {
             const signature = messages => JSON.stringify(messages.map(m => [m.name, m.is_user, m.is_system, m.mes, m.send_date, m.extra?.media]));
             if (signature(localHistory) !== signature(remoteHistory)) throw new Error('This tab differs from the saved chat. Reload that chat; video is safe in storage.');
             if (!existing) {
-                const message = { name: 'Video test', is_user: false, is_system: true, send_date: host.getMessageTimeStamp(), mes: 'Video test.',
-                    extra: { media: [{ url: job.saved.path, type: host.MEDIA_TYPE.VIDEO, title: 'Video test', source: host.MEDIA_SOURCE.GENERATED }], media_display: host.MEDIA_DISPLAY.GALLERY, media_index: 0, venice_video_rig: { id: job.id } } };
+                const companion = job.kind === 'companion';
+                const message = { name: companion ? job.target.name : 'Video test', is_user: false, is_system: !companion, send_date: host.getMessageTimeStamp(), mes: companion ? 'Video.' : 'Video test.',
+                    extra: { media: [{ url: job.saved.path, type: host.MEDIA_TYPE.VIDEO, title: companion ? 'Video' : 'Video test', source: host.MEDIA_SOURCE.GENERATED }], media_display: host.MEDIA_DISPLAY.GALLERY, media_index: 0, venice_video_rig: { id: job.id } } };
                 c.chat.push(message); c.addOneMessage(message);
+                document.querySelectorAll?.('.mes_video').forEach(video => video.setAttribute('playsinline', ''));
                 // No generation/message events: this manual rig must not trigger TTS or companion replies.
             }
             if (!matches()) return false;
@@ -233,7 +248,30 @@ export function createRigHost(host) {
             if (!(await savedChat(job)).some?.(marker)) throw new Error('Chat save not confirmed. Video retained; delivery will retry without resubmission.');
             return true;
         },
+        deleteOwnedAsset: async (job, asset) => {
+            const path = localFile(asset.path);
+            if (!path.split('/').pop().startsWith(`venice_video_${job.id}`)) throw new Error('Retention refused a file outside this video job.');
+            const persisted = await serverSettings();
+            const refs = Object.values(persisted['st-venice-vision-bridge']?.portraits || {});
+            if (refs.some(ref => ref.url === path)) return false;
+            // Deletion is idempotent. Never remove a saved reference image.
+            const exists = await (await post('/api/files/verify', { urls: [path] })).json();
+            if (exists[path] === true) await post('/api/files/delete', { path });
+            const checked = await (await post('/api/files/verify', { urls: [path] })).json();
+            if (checked[path] !== false) throw new Error('Retention deletion was not confirmed.');
+            await lock('persist', async () => {
+                const latest = await serverSettings(), old = [settings.attachments, settings.disabled_attachments];
+                settings.attachments = (latest.attachments || []).filter(a => a.url !== path);
+                settings.disabled_attachments = (latest.disabled_attachments || []).filter(url => url !== path);
+                if (latest[RIG_KEY]) settings[RIG_KEY] = clone(latest[RIG_KEY]);
+                try {
+                    await host.saveSettings();
+                    if ((await serverSettings()).attachments?.some(a => a.url === path)) throw new Error('Retention registry update was not confirmed.');
+                } catch (e) { [settings.attachments, settings.disabled_attachments] = old; throw e; }
+            });
+            return true;
+        },
         setEvidence: (id, values) => update(db => { const j = db.jobs.find(x => x.id === id); if (j) j.evidence = { ...j.evidence, ...values }; }),
-        report: () => JSON.stringify({ rig: '0.1.0', creditUSD: 0.01, checks, jobs: cached.jobs.map(j => ({ id: j.id, state: j.state, model: j.model, params: j.params, mode: j.mode, usd: j.usd, credits: j.usd * 100, charge: j.charge, created: j.created, queueConfirmed: !!j.queueId, queueTag: j.queueId?.slice(0, 12), confirmedAt: j.confirmedAt, recoveredAt: j.recoveredAt, providerCleaned: j.providerCleaned, saved: j.saved ? { bytes: j.saved.bytes, audioTracks: j.saved.audioTracks, verifiedAt: j.saved.verifiedAt } : null, deliveredAt: j.deliveredAt, error: j.error && safeError(j.error), cleanupError: j.cleanupError && safeError(j.cleanupError), evidence: j.evidence })) }, null, 2),
+        report: () => JSON.stringify({ rig: '0.1.0', creditUSD: 0.01, checks, jobs: cached.jobs.map(j => ({ id: j.id, kind: j.kind || 'manual-test', state: j.state, stillUSD: j.stillUSD, videoUSD: j.videoUSD, totalUSD: j.totalUSD, stillCharge: j.stillCharge, videoCharge: j.videoCharge, sourceVerified: !!j.source?.verifiedAt, model: j.model, params: j.params, mode: j.mode, usd: j.usd, credits: j.usd * 100, charge: j.charge, created: j.created, queueConfirmed: !!j.queueId, queueTag: j.queueId?.slice(0, 12), confirmedAt: j.confirmedAt, recoveredAt: j.recoveredAt, providerCleaned: j.providerCleaned, saved: j.saved ? { bytes: j.saved.bytes, audioTracks: j.saved.audioTracks, verifiedAt: j.saved.verifiedAt } : null, deliveredAt: j.deliveredAt, error: j.error && safeError(j.error), cleanupError: j.cleanupError && safeError(j.cleanupError), evidence: j.evidence })) }, null, 2),
     };
 }
