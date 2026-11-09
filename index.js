@@ -157,7 +157,8 @@ jQuery(() => {
               </div>
             </div>
             <div id="venice_bridge_models"></div><div id="venice_bridge_portraits"></div><div id="venice_bridge_user_portrait"></div>
-            <small>Version 0.6.5 · Built for SillyTavern 1.19.0</small>
+            <div id="venice_video_rig_launcher" class="menu_button">Open manual video connection test</div>
+            <small>Version 0.6.6 · Built for SillyTavern 1.19.0</small>
           </div>
         </div>
       </div>`);
@@ -224,6 +225,22 @@ jQuery(() => {
         } });
     album = mountAlbum({ onReference: portraits.useAlbumPortrait, getContext, getSettings: settings, extension_settings, eventSource, event_types,
         saveSettings, saveSettingsDebounced, getRequestHeaders, getMessageTimeStamp, MEDIA_TYPE, MEDIA_SOURCE, MEDIA_DISPLAY });
+    let videoRigLoading = false;
+    async function openVideoRig() {
+        if (videoRigLoading) return;
+        videoRigLoading = true;
+        try {
+            const { mountVideoRig } = await import('./video-rig-ui.mjs');
+            mountVideoRig({ extension_settings, getContext, saveSettings, getRequestHeaders,
+                getMessageTimeStamp, isGenerating, hasPendingFileAttachment,
+                eventSource, event_types, MEDIA_TYPE, MEDIA_SOURCE, MEDIA_DISPLAY });
+        } catch (error) {
+            console.warn('[Venice video test] Could not load:', error.message);
+            toastr.error('Video test could not load. Existing images remain available. ' + error.message);
+        } finally { videoRigLoading = false; }
+    }
+    $('#venice_video_rig_launcher').on('click', openVideoRig);
+    if (extension_settings['venice-video-rig-v1']?.jobs?.length) openVideoRig();
     refresh();
-    console.info('[Venice Image Bridge] 0.6.0 loaded');
+    console.info('[Venice Image Bridge] 0.6.6 loaded');
 });

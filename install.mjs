@@ -11,7 +11,7 @@ const rootIndex = args.indexOf('--app-root');
 const root = path.resolve(rootIndex >= 0 ? args[rootIndex + 1] || '' : process.cwd());
 const dryRun = args.includes('--dry-run');
 const uninstall = args.includes('--uninstall');
-const files = ['manifest.json', 'index.js', 'elevenlabs-v4.mjs', 'core.mjs', 'orientation.mjs', 'runtime.mjs', 'continuation.mjs', 'transport.mjs', 'diagnostics.mjs', 'models.mjs', 'models-ui.mjs', 'portraits.mjs', 'portraits-ui.mjs', 'album-core.mjs', 'album-runtime.mjs', 'album-ui.mjs', 'album.css'];
+const files = ['manifest.json', 'index.js', 'video-rig-core.mjs', 'video-rig-host.mjs', 'video-rig-ui.mjs', 'elevenlabs-v4.mjs', 'core.mjs', 'orientation.mjs', 'runtime.mjs', 'continuation.mjs', 'transport.mjs', 'diagnostics.mjs', 'models.mjs', 'models-ui.mjs', 'portraits.mjs', 'portraits-ui.mjs', 'album-core.mjs', 'album-runtime.mjs', 'album-ui.mjs', 'album.css'];
 try {
     const info = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
     if (info.name?.toLowerCase() !== 'sillytavern' || info.version !== '1.19.0') {
@@ -60,7 +60,7 @@ try {
         if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true });
         throw error;
     }
-    console.log(`Installed 0.6.5.${backup ? ` Previous bridge saved at ${backup}.` : ''}`);
+    console.log(`Installed 0.6.6.${backup ? ` Previous bridge saved at ${backup}.` : ''}`);
     console.log('Reload SillyTavern. Enable the image tool for the intended character in Extensions > Venice Image Bridge.');
     console.log('Ensure the third-party extensions directory is on persistent Docker storage before container recreation.');
 } catch (error) {

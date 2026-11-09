@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.6.5 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.6.6 — Fixed reference portraits, live models and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -30,7 +30,7 @@ Repository URL:
 https://github.com/joetharp1/st-venice-vision-bridge
 ```
 
-**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.6.5**. Avoid keeping another old SillyTavern tab open while changing settings.
+**Already installed:** use SillyTavern’s extension manager to update **Venice Image Bridge**, then reload the page. Check that the panel says **Version 0.6.6**. Avoid keeping another old SillyTavern tab open while changing settings.
 
 **First installation:** Extensions → Install extension → paste the URL → install for the current user → reload.
 
@@ -242,3 +242,12 @@ After update and reload, keep **ElevenLabs** in Select TTS Provider and choose *
 This scoped compatibility adapter extends only the built-in ElevenLabs provider at runtime; no ST core files or global fetch functions are patched by the TTS module. It adds the model choices and omits speed/style/speaker boost only on v4 requests through ST's authenticated synthesis endpoint. Legacy models retain their original generation methods. For v4 only, it bypasses the old history cache because that cache matches text/voice without checking the model. Audio tags pass through unchanged. This update does not install a display regex, set any character voice or alter character prompts.
 
 At APP_READY the adapter adds options to any existing panel and restores the saved selection without firing a change event or writing settings. Later provider reloads include those options normally. The original ElevenLabs provider name remains, avoiding unavailable-provider errors during startup. Initialization failures are isolated from image initialization. No voice IDs, API keys or personal text are included. Live speech acceptance requires an account test; local responses are synthetic.
+
+
+## 0.6.6 — Manual video connection rig
+
+Open **Venice Image Bridge → Open manual video connection test**. This is a manual acceptance rig using the existing Venice Image Generation key; it does not register a companion video tool or change cards, TTS or image generation. Use an approved existing still, check the authenticated quote, then submit one five-second test. Silent mode is offered for testing only when the live catalogue advertises an audio switch. No audio stripping is included.
+
+Job records and queue IDs are verified in ST server settings. Reload/closed-tab recovery retrieves the same job without paid resubmission. Two profile-wide execution slots and serialized submissions prevent duplicate or overlapping ambiguous submissions on one browser/device. MP4 bytes are uploaded, read back and hash-verified, registered outside automatic retrieval, then posted only into the captured chat. Unknown submission outcomes are held and reported.
+
+See [VIDEO-TEST-RIG.md](VIDEO-TEST-RIG.md) for the exact phone acceptance steps, recovery limitations, pricing units, stage-3 still gate and validation evidence. Production budget/retention logic, model wiring and trigger rules remain outside this rig. Chromium launch was blocked in development; actual Android playback and Venice API behavior remain live acceptance checks.
