@@ -8,19 +8,19 @@ import { characterKey, isVeniceConnection } from './core.mjs';
 export function createCompanionHost(host) {
     const d = createRigHost(host), stopped = new Set();
     const baseReport = d.report;
-    function availability() {
+    function availability(manual = false) {
         const c = host.getContext(), s = host.getSettings(), cfg = config(d.cached());
         const enabled = cfg.characters[characterKey(c)] === true;
         const reason = c.groupId || !c.chatId || !characterKey(c) ? 'Open a saved one-to-one companion chat.'
             : !s.enabled ? 'Venice Image Bridge is disabled.'
-            : !isVeniceConnection(c) ? 'Select the Venice chat connection.'
-            : !enabled ? 'Video is OFF for this companion. Tick Enable video and press Save video settings.'
-            : !s.characters?.[characterKey(c)] ? 'Enable the image bridge for this companion so it can prepare video stills.'
-            : !c.chatCompletionSettings?.function_calling ? 'Enable function calling in Chat Completion settings.'
-            : !c.chatCompletionSettings?.media_inlining ? 'Enable inline images/media in Chat Completion settings.'
+            : !manual && !isVeniceConnection(c) ? 'Select the Venice chat connection.'
+            : !manual && !enabled ? 'Video is OFF for this companion. Tick Enable video and press Save video settings.'
+            : !manual && !s.characters?.[characterKey(c)] ? 'Enable the image bridge for this companion so it can prepare video stills.'
+            : !manual && !c.chatCompletionSettings?.function_calling ? 'Enable function calling in Chat Completion settings.'
+            : !manual && !c.chatCompletionSettings?.media_inlining ? 'Enable inline images/media in Chat Completion settings.'
             : !host.extension_settings['st-venice-image']?.api_key ? 'Configure the existing Venice image API key.'
             : cfg.dailyUSD === null || cfg.monthlyUSD === null ? 'Check live prices to initialise the video budget.' : null;
-        return { ready: reason === null, companionEnabled: enabled, reason: reason || 'Video tool READY — VeniceCreateVideo is available to this companion.' };
+        return { ready: reason === null, companionEnabled: enabled, reason: reason || (manual ? 'Ready to create your video.' : 'Video tool READY — VeniceCreateVideo is available to this companion.') };
     }
     const currentMatches = target => {
         try { const c = d.target(); return c.avatar === target.avatar && c.chatId === target.chatId; } catch { return false; }
@@ -42,7 +42,13 @@ export function createCompanionHost(host) {
     }
     return Object.assign(d, {
         prepare,
-        refreshQuote: (job, c) => prepare(job.still.recipe, c, job.still.references),
+        refreshQuote: (job, c) => prepare(job.still.recipe, job.requestedBy === 'user' ? { ...c, audio: job.mode, resolution: job.params.resolution } : c, job.still.references),
+        referencePreview: subject => {
+            const c = host.getContext(), own = host.getSettings();
+            const refs = [{ key: USER_PORTRAIT_KEY, label: c.name1 || 'You' }, { key: characterKey(c), label: c.name2 || 'Companion' }];
+            return refs.filter((_, i) => subject === 'together' || (subject === 'user' ? i === 0 : i === 1))
+                .map(ref => ({ label: ref.label, url: own.portraits?.[ref.key]?.url || null }));
+        },
         turn: async () => {
             const c = host.getContext(), target = d.target();
             const userIndex = c.chat.findLastIndex(m => m.is_user);
@@ -53,7 +59,7 @@ export function createCompanionHost(host) {
         },
         ready: () => availability().ready,
         availability,
-        report: () => JSON.stringify({ ...JSON.parse(baseReport()), companionVideo: '0.7.3', availability: availability() }, null, 2),
+        report: () => JSON.stringify({ ...JSON.parse(baseReport()), companionVideo: '0.8.0', availability: availability() }, null, 2),
         announcement: async job => {
             if (stopped.has(job.id)) return 'abort';
             if (host.isGenerating()) return null;
@@ -66,7 +72,7 @@ export function createCompanionHost(host) {
         canStart: job => {
             if (document.hidden || host.isGenerating() || !currentMatches(job.target)) return false;
             if (String(document.getElementById('send_textarea')?.value || '').trim() || host.hasPendingFileAttachment()) return false;
-            return config(d.cached()).characters[job.target.avatar] === true && host.getSettings().enabled;
+            return (job.requestedBy === 'user' || config(d.cached()).characters[job.target.avatar] === true) && host.getSettings().enabled;
         },
         withStillLock: async fn => {
             if (host.bridge.busy || !host.bridge.initiationStatus().ready) {

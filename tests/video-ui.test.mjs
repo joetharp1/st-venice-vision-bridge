@@ -31,6 +31,7 @@ async function fixture() {
         prepare: async () => ({ still: { usd: .06 }, videoUSD: .64 }),
         availability: () => ({ ready: !!db.videoConfig.characters['Ava.png'], companionEnabled: !!db.videoConfig.characters['Ava.png'], reason: db.videoConfig.characters['Ava.png'] ? 'Video tool READY' : 'Video is OFF' }),
         ready: () => !!db.videoConfig.characters['Ava.png'], report: () => JSON.stringify({ checks, availability: d.availability(), jobs: db.jobs }),
+        referencePreview: () => [{ label: 'Ava', url: '/user/files/ava.png' }],
         recordCheck: (k,v) => checks[k] = v, turn: async () => ({ id: 'turn' }), stop: async () => {},
     };
     const engine = { tick: async () => { calls++; }, retention: async () => {}, request: async () => { calls++; return { id: 'job', state: 'awaiting_reply' }; } };
@@ -44,8 +45,32 @@ async function fixture() {
     }); await module.evaluate();
     await module.namespace.mountCompanionVideo({ isGenerating: () => false, getContext: () => ({ registerFunctionTool: t => tools.push(t) }), eventSource: { on: (k,fn) => events.set(k,fn) }, event_types: { GENERATION_STOPPED: 'stopped', CHAT_CHANGED: 'chat', GENERATION_ENDED: 'ended' } });
     const root = container.children[0], $ = s => root.querySelector(s);
-    return { $, tools, timers, checks, engine, get db() { return db; }, get calls() { return calls; }, failReads: () => readFails = true };
+    return { $, tools, timers, checks, engine, events, get db() { return db; }, get calls() { return calls; }, failReads: () => readFails = true };
 }
+test('manual form requires a matching quote, invalidates on edits/chat switches and reserves only on explicit start', async () => {
+    const f = await fixture(); let submitted = 0, received;
+    f.engine.quoteManual = async args => { received = args; return { id: 'manual', totalUSD: .7, ticket: { still: { usd: .06 }, videoUSD: .64 } }; };
+    f.engine.requestManual = async q => { assert.equal(q.id, 'manual'); submitted++; return { id: q.id, state: 'prepared' }; };
+    for (const [k,v] of Object.entries({ subject: 'together', scene: 'A room.', motion: 'Wave.', aspect_ratio: '16:9', duration: 10 })) f.$(`[data-manual="${k}"]`).value = v;
+    await f.$('[data-action="manual-quote"]').onclick();
+    assert.equal(received.subject, 'together'); assert.equal(received.duration, 10); assert.equal(submitted, 0);
+    assert.equal(f.$('[data-action="manual-start"]').disabled, false);
+    f.$('[data-manual="scene"]').listeners.input(); assert.equal(f.$('[data-action="manual-start"]').disabled, true);
+    await f.$('[data-action="manual-quote"]').onclick(); f.events.get('chat')();
+    assert.equal(f.$('[data-action="manual-start"]').disabled, true);
+    await f.$('[data-action="manual-quote"]').onclick();
+    await f.$('[data-action="manual-start"]').onclick();
+    assert.equal(submitted, 1); assert.equal(f.$('[data-action="manual-start"]').disabled, true);
+    await f.$('[data-action="manual-start"]').onclick(); assert.equal(submitted, 1);
+});
+test('editing while a live quote is pending cannot authorise stale form content', async () => {
+    const f = await fixture(); let release;
+    f.engine.quoteManual = () => new Promise(r => release = r);
+    const pending = f.$('[data-action="manual-quote"]').onclick();
+    f.$('[data-manual="subject"]').listeners.input();
+    release({ totalUSD: .7, ticket: { still: { usd: .06 }, videoUSD: .64 } }); await pending;
+    assert.equal(f.$('[data-action="manual-start"]').disabled, true);
+});
 test('actual quote handler preserves checked Enable and audio/resolution edits without enabling until Save', async () => {
     const f = await fixture();
     f.$('[data-field="enabled"]').checked = true; f.$('[data-field="enabled"]').listeners.change();

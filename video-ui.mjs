@@ -7,8 +7,23 @@ export async function mountCompanionVideo(host) {
     if (mounted) return mounted;
     const d = createCompanionHost(host), rig = createVideoRig(d), engine = createCompanionVideo(d, rig);
     const root = document.createElement('div'); root.id = 'venice_companion_video';
-    root.innerHTML = `<hr><h4>Companion video · 0.7.2</h4>
+    root.innerHTML = `<hr><h4>Companion video · 0.8.0</h4>
       <p>Reference-based five-second clips, delivered after the chat reply. Your reference and companion references are shared with the image bridge.</p>
+      <details open><summary><b>Create a video yourself</b></summary>
+      <p>Use your saved reference portraits to create a new scene, then animate it. Open the companion’s chat to choose them.</p>
+      <label>Who appears?<select class="text_pole" data-manual="subject"><option value="companion">Current companion</option><option value="user">Me</option><option value="together">Me and current companion</option></select></label>
+      <div data-references style="display:flex;gap:12px;flex-wrap:wrap;margin:12px 0"></div>
+      <p>Change these images in the bridge’s reference portrait controls above.</p>
+      <label>Starting scene<textarea class="text_pole" data-manual="scene" rows="3" maxlength="1200" placeholder="Clothing, pose, setting and lighting…"></textarea></label>
+      <label>Movement<textarea class="text_pole" data-manual="motion" rows="3" maxlength="1000" placeholder="What moves, how the camera moves, and how the clip ends…"></textarea></label>
+      <label>Shape<select class="text_pole" data-manual="aspect_ratio"><option value="9:16">Portrait · 9:16</option><option value="16:9">Landscape · 16:9</option></select></label>
+      <label>Length<select class="text_pole" data-manual="duration"><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option></select></label>
+      <p>Uses the saved audio, resolution and shared spending limits below. Longer clips depend on the live model catalogue. Checking a price does not generate anything.</p>
+      <button class="menu_button" data-action="manual-quote">Check price for this video</button>
+      <p data-manual-status role="status">Choose your subject and describe the scene and movement.</p>
+      <button class="menu_button" data-action="manual-start" disabled>Generate my video</button>
+      <p>The clip appears in this chat and the download list below. Keep this chat open until submission completes. No media is sent to Telegram.</p>
+      </details><hr>
       <p data-character></p>
       <label class="checkbox_label"><input type="checkbox" data-field="enabled"><span>Enable video for this companion</span></label>
       <p data-availability role="status"></p>
@@ -38,6 +53,30 @@ export async function mountCompanionVideo(host) {
     document.getElementById('venice_bridge_settings').querySelector('.inline-drawer-content').append(root);
     const $ = s => root.querySelector(s), status = s => $('[data-status]').textContent = s;
     let formDirty = false, working = false, timer, lastRetention = 0;
+    let manualQuote = null, manualRevision = 0;
+    const manualFields = ['subject', 'scene', 'motion', 'aspect_ratio', 'duration'];
+    function manualArgs() {
+        return Object.fromEntries(manualFields.map(k => [k, k === 'duration' ? Number($(`[data-manual="${k}"]`).value) : $(`[data-manual="${k}"]`).value]));
+    }
+    function invalidateManual() {
+        manualRevision++; manualQuote = null;
+        $('[data-action="manual-start"]').disabled = true;
+        $('[data-action="manual-start"]').textContent = 'Generate my video';
+        $('[data-manual-status]').textContent = 'Check the price for your current choices.';
+    }
+    function renderReferences() {
+        const box = $('[data-references]'); box.replaceChildren();
+        for (const ref of d.referencePreview($('[data-manual="subject"]').value)) {
+            const item = document.createElement('div'), label = document.createElement('div');
+            label.textContent = `${ref.label}${ref.url ? '' : ' · no reference saved'}`;
+            if (ref.url) {
+                const img = document.createElement('img'); img.src = ref.url; img.alt = `${ref.label} reference`;
+                img.style.cssText = 'width:76px;height:76px;object-fit:cover;border-radius:8px'; item.append(img);
+            }
+            item.append(label); box.append(item);
+        }
+    }
+    manualFields.forEach(k => $(`[data-manual="${k}"]`).addEventListener('input', () => { invalidateManual(); renderReferences(); }));
     root.querySelectorAll('[data-field]').forEach(el => el.addEventListener('change', () => { formDirty = true; }));
     const fields = ['audio', 'resolution', 'dailyCount', 'monthlyCount', 'perJobUSD', 'dailyUSD', 'monthlyUSD', 'retentionDays', 'storageMB'];
     function current() { try { return d.target(); } catch { return null; } }
@@ -45,6 +84,7 @@ export async function mountCompanionVideo(host) {
         const db = d.cached(), c = config(db), target = current();
         $('[data-character]').textContent = target ? `Companion: ${target.name}` : 'Open a saved companion chat.';
         $('[data-availability]').textContent = d.availability().reason;
+        renderReferences();
         if (!formDirty || force) {
             fields.forEach(k => $(`[data-field="${k}"]`).value = c[k] ?? '');
             $('[data-field="enabled"]').checked = !!c.characters[target?.avatar];
@@ -56,7 +96,7 @@ export async function mountCompanionVideo(host) {
         const jobs = $('[data-jobs]'); jobs.replaceChildren();
         for (const j of db.jobs.filter(j => j.kind === 'companion').slice(-12).reverse()) {
             const box = document.createElement('div'), p = document.createElement('p');
-            p.textContent = `${j.target.name} · ${j.state} · ${money(chargedUSD(j))} charged or conservatively held${activeJob(j) ? ` · reserved ${money(j.totalUSD)}` : ''}${j.error ? ` · ${j.error}` : ''}`;
+            p.textContent = `${j.requestedBy === 'user' ? 'Your video · ' : ''}${j.target.name} · ${j.state} · ${money(chargedUSD(j))} charged or conservatively held${activeJob(j) ? ` · reserved ${money(j.totalUSD)}` : ''}${j.error ? ` · ${j.error}` : ''}`;
             box.append(p);
             if (j.saved?.path && !j.saved.deletedAt) {
                 const a = document.createElement('a'); a.textContent = 'Download clip'; a.href = j.saved.path; a.download = j.fileName; box.append(a);
@@ -86,6 +126,35 @@ export async function mountCompanionVideo(host) {
         try { await fn(); render(); } catch (e) { status(safeError(e)); }
         finally { working = false; }
     }; }
+    function runManual(fn) { return async () => {
+        if (working) return; working = true;
+        $('[data-action="manual-quote"]').disabled = true;
+        $('[data-action="manual-start"]').disabled = true;
+        try { await fn(); render(); }
+        catch (e) { manualQuote = null; $('[data-manual-status]').textContent = safeError(e); }
+        finally {
+            working = false; $('[data-action="manual-quote"]').disabled = false;
+            $('[data-action="manual-start"]').disabled = !manualQuote;
+        }
+    }; }
+    $('[data-action="manual-quote"]').onclick = runManual(async () => {
+        invalidateManual(); const revision = manualRevision;
+        $('[data-manual-status]').textContent = 'Checking the reference models and live price…';
+        const quote = await engine.quoteManual(manualArgs());
+        if (revision !== manualRevision) return;
+        manualQuote = quote;
+        $('[data-manual-status]').textContent = `Starting still ${money(quote.ticket.still.usd)} + video ${money(quote.ticket.videoUSD)} = ${money(quote.totalUSD)} total (USD). Quote valid for five minutes. Generate authorises this amount; a higher price stops the job.`;
+        $('[data-action="manual-start"]').textContent = `Generate my video · ${money(quote.totalUSD)}`;
+    });
+    $('[data-action="manual-start"]').onclick = runManual(async () => {
+        if (!manualQuote) throw new Error('Check the price first.');
+        const quote = manualQuote; manualQuote = null;
+        const result = await engine.requestManual(quote);
+        if (!result) throw new Error('Another video submission is busy. Check the price again in a moment.');
+        $('[data-manual-status]').textContent = 'Request saved. Preparing your scene and video when this chat is visible and idle. Follow its progress in the jobs list below.';
+        render();
+        clearTimeout(timer); timer = setTimeout(tick, 100);
+    });
     $('[data-action="quote"]').onclick = run(async () => {
         const target = d.target(); d.assertTarget(target);
         const c = config(await d.read());
@@ -127,6 +196,7 @@ export async function mountCompanionVideo(host) {
             db.videoConfig = next;
         });
         render(true); status(`Video settings saved. ${d.availability().reason}`);
+        invalidateManual();
     });
     $('[data-action="resume"]').onclick = run(async () => { await engine.tick(); status('Saved jobs checked. Completed clips are delivered when their original chat is open and idle.'); });
     $('[data-action="report"]').onclick = () => { $('[data-report]').hidden = false; $('[data-report]').value = d.report(); };
@@ -157,7 +227,7 @@ export async function mountCompanionVideo(host) {
         }, formatMessage: () => 'Preparing a video request…',
     });
     host.eventSource.on(host.event_types.GENERATION_STOPPED, () => { d.stop().catch(e => status(safeError(e))); });
-    host.eventSource.on(host.event_types.CHAT_CHANGED, () => { formDirty = false; render(true); });
+    host.eventSource.on(host.event_types.CHAT_CHANGED, () => { formDirty = false; invalidateManual(); render(true); });
     host.eventSource.on(host.event_types.GENERATION_ENDED, () => { clearTimeout(timer); timer = setTimeout(tick, 1000); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { clearTimeout(timer); timer = setTimeout(tick, 1000); } });
     await d.read(); render(true); status('Ready. Check live prices before enabling your first companion.');

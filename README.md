@@ -1,6 +1,10 @@
-# Venice Image Bridge 0.7.3 — Fixed reference portraits, live models and picture albums
+# Venice Image Bridge 0.8.0 — Reference portraits, manual videos and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
+
+## Create a video yourself (0.8.0)
+
+Open **Extensions → Venice Image Bridge → Companion video → Create a video yourself**. Choose yourself, the current companion, or both using your saved reference portraits. Describe the scene and movement, choose shape and duration, then **Check price for this video → Generate my video**. Clips arrive in the original chat as **Your video**, with downloads in the jobs list. This uses the existing video budgets and recovery; it does not require the companion's video tool to be enabled. No media is sent to Telegram. See [COMPANION-VIDEO.md](COMPANION-VIDEO.md) for details.
 
 ## Ava Initiation integration (0.5.0)
 

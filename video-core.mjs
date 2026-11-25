@@ -68,6 +68,44 @@ export function budget(db, at, total, excludeId = null) {
 export function createCompanionVideo(d, rig) {
     const patch = (id, values) => d.update(db => Object.assign(db.jobs.find(j => j.id === id), values));
     const fail = (id, e, values = {}) => patch(id, { state: 'failed', error: safeError(e), ...values });
+    async function quoteManual(args) {
+        const target = d.target(), status = d.availability(true);
+        if (!status.ready) throw new Error(status.reason);
+        const db = await d.read(), ticket = await d.prepare({ ...args, avatar: target.avatar }, config(db));
+        d.assertTarget(target);
+        const totalUSD = round(ticket.still.usd + ticket.videoUSD);
+        budget(db, d.now(), totalUSD);
+        return { id: d.uuid(), target: clone(target), ticket: clone(ticket), totalUSD, quotedAt: d.now() };
+    }
+    async function requestManual(quote) {
+        return d.lock('submission', async () => {
+            d.assertTarget(quote.target);
+            const status = d.availability(true);
+            if (!status.ready) throw new Error(status.reason);
+            const db = await d.read();
+            const duplicate = db.jobs.find(j => j.id === quote.id);
+            if (duplicate) return { id: duplicate.id, duplicate: true, state: duplicate.state };
+            if (d.now() - quote.quotedAt > 300000) throw new Error('This quote has expired. Check the price again.');
+            if (db.jobs.filter(activeJob).length >= 2) throw new Error('Two video jobs are already active.');
+            if (db.jobs.some(j => ['preparing', 'submitting', 'uncertain'].includes(j.state))) throw new Error('Waiting for an earlier submission to be confirmed.');
+            budget(db, d.now(), quote.totalUSD);
+            const { id, ticket } = quote;
+            await d.update(latest => {
+                d.assertTarget(quote.target);
+                if (latest.jobs.some(j => j.id === id)) throw new Error('This video request is already saved.');
+                if (latest.jobs.filter(activeJob).length >= 2) throw new Error('Two video jobs are already active.');
+                budget(latest, d.now(), quote.totalUSD);
+                latest.jobs.push({ id, kind: 'companion', requestedBy: 'user', target: clone(quote.target),
+                    turn: { id: `manual-${id}`, target: clone(quote.target) }, created: d.now(), state: 'prepared',
+                    fileName: `venice_video_${id}.mp4`, still: clone(ticket.still), plan: clone(ticket.plan),
+                    model: ticket.plan.params.model, params: clone(ticket.plan.params), mode: ticket.plan.mode,
+                    quotedAt: quote.quotedAt, approvedUSD: quote.totalUSD,
+                    stillUSD: ticket.still.usd, videoUSD: ticket.videoUSD, totalUSD: quote.totalUSD,
+                    usd: ticket.videoUSD, charge: 'reserved', stillCharge: false, videoCharge: false });
+            });
+            return { id, state: 'prepared' };
+        }, true);
+    }
     async function request(args, turn) {
         return d.lock('submission', async () => {
             const db = await d.read(), c = config(db);
@@ -113,6 +151,7 @@ export function createCompanionVideo(d, rig) {
                     // Refresh prices before the first paid stage, including any model availability change.
                     const fresh = await d.refreshQuote(job, config(db));
                     const total = round(fresh.still.usd + fresh.videoUSD);
+                    if (job.requestedBy === 'user' && total > job.approvedUSD + 1e-6) throw new Error('Price increased above your approved quote. Check the price and create a new request.');
                     budget(db, d.now(), total, id);
                     await patch(id, { still: fresh.still, plan: fresh.plan, params: fresh.plan.params,
                         stillUSD: fresh.still.usd, videoUSD: fresh.videoUSD, totalUSD: total, usd: fresh.videoUSD, quotedAt: d.now() });
@@ -136,6 +175,7 @@ export function createCompanionVideo(d, rig) {
                 // Verify the generated frame and obtain a fresh video quote before paying for video.
                 const submission = await d.videoSubmission(job);
                 const total = round(job.stillUSD + submission.usd);
+                if (job.requestedBy === 'user' && total > job.approvedUSD + 1e-6) throw new Error('Video price increased above your approved quote. Starting still saved; video not submitted.');
                 budget(await d.read(), d.now(), total, id);
                 await patch(id, { state: 'submitting', videoCharge: true, videoUSD: submission.usd,
                     usd: submission.usd, totalUSD: total, params: submission.params });
@@ -190,7 +230,7 @@ export function createCompanionVideo(d, rig) {
             await retention();
         } finally { ticking = false; }
     }
-    return { request, tick, process, retention };
+    return { request, quoteManual, requestManual, tick, process, retention };
 }
 
 export function findAnnouncement(messages, job) {

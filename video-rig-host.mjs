@@ -269,9 +269,9 @@ export function createRigHost(host) {
             const signature = messages => JSON.stringify(messages.map(m => [m.name, m.is_user, m.is_system, m.mes, m.send_date, m.extra?.media]));
             if (signature(localHistory) !== signature(remoteHistory)) throw new Error('This tab differs from the saved chat. Reload that chat; video is safe in storage.');
             if (!existing) {
-                const companion = job.kind === 'companion';
-                const message = { name: companion ? job.target.name : 'Video test', is_user: false, is_system: !companion, send_date: host.getMessageTimeStamp(), mes: companion ? 'Video.' : 'Video test.',
-                    extra: { media: [{ url: job.saved.path, type: host.MEDIA_TYPE.VIDEO, title: companion ? 'Video' : 'Video test', source: host.MEDIA_SOURCE.GENERATED }], media_display: host.MEDIA_DISPLAY.GALLERY, media_index: 0, venice_video_rig: { id: job.id } } };
+                const manual = job.requestedBy === 'user', companion = job.kind === 'companion' && !manual;
+                const message = { name: manual ? 'Your video' : companion ? job.target.name : 'Video test', is_user: false, is_system: !companion, send_date: host.getMessageTimeStamp(), mes: manual ? 'Your video.' : companion ? 'Video.' : 'Video test.',
+                    extra: { media: [{ url: job.saved.path, type: host.MEDIA_TYPE.VIDEO, title: manual ? 'Your video' : companion ? 'Video' : 'Video test', source: host.MEDIA_SOURCE.GENERATED }], media_display: host.MEDIA_DISPLAY.GALLERY, media_index: 0, venice_video_rig: { id: job.id } } };
                 c.chat.push(message); c.addOneMessage(message);
                 document.querySelectorAll?.('.mes_video').forEach(video => video.setAttribute('playsinline', ''));
                 // No generation/message events: this manual rig must not trigger TTS or companion replies.

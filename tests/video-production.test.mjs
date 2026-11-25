@@ -17,6 +17,8 @@ function fixture() {
     const held = new Set(), calls = [], receipts = {};
     let announcement = null, visible = true, queueError, stillError, submitGate, quote = .55, renderGate;
     const d = {
+        target: () => turn(1).target, assertTarget: target => { if (target.chatId !== 'chat-1') throw new Error('Chat changed'); },
+        availability: () => ({ ready: true }),
         now: () => now, uuid: () => `job-${++id}`, read: async () => structuredClone(db),
         update: async fn => { const copy = structuredClone(db); fn(copy); db = copy; return structuredClone(db); },
         lock: async (key, fn, optional) => {
@@ -52,6 +54,45 @@ test('video still uses exact saved reference pipeline and a scoped ratio without
     assert.deepEqual(both.urls, ['/user/files/joe.png', '/user/files/ava.png']); assert.equal(both.usd, .13);
     assert.ok(both.body.prompt.includes(INITIATION_TAIL));
     assert.equal(stillPlan(s, 'Ava.png', {}, { ...args, subject: 'user' }).url, '/user/files/joe.png');
+});
+test('manual quote is free; explicit submit uses saved references without a model reply or companion opt-in, and is idempotent', async () => {
+    const f = fixture(); await f.d.update(db => db.videoConfig.characters = {});
+    const quote = await f.engine.quoteManual(args);
+    assert.equal(quote.totalUSD, .65); assert.deepEqual(f.calls, []); assert.equal(f.db.jobs.length, 0);
+    const result = await f.engine.requestManual(quote);
+    assert.equal(result.state, 'prepared'); assert.equal(f.db.jobs[0].requestedBy, 'user');
+    assert.deepEqual(f.calls, []);
+    assert.equal((await f.engine.requestManual(quote)).duplicate, true);
+    await f.engine.tick(); await f.make().tick();
+    assert.equal(f.db.jobs[0].state, 'delivered');
+    assert.deepEqual(f.calls, ['still', 'queue', 'retrieve', 'cleanup', 'attach']);
+});
+test('manual expired quotes and changed chats are rejected before any paid operation', async () => {
+    const f = fixture(), quote = await f.engine.quoteManual(args);
+    f.advance(300001); await assert.rejects(f.engine.requestManual(quote), /expired/);
+    quote.quotedAt = f.d.now(); quote.target.chatId = 'other';
+    await assert.rejects(f.engine.requestManual(quote), /Chat changed/);
+    assert.deepEqual(f.calls, []); assert.equal(f.db.jobs.length, 0);
+});
+test('manual jobs enforce the approved amount even when the shared budget would permit an increase', async () => {
+    const f = fixture(), quote = await f.engine.quoteManual(args);
+    await f.engine.requestManual(quote); f.quote = .56;
+    await f.engine.tick(); assert.deepEqual(f.calls, []); assert.equal(f.db.jobs[0].state, 'failed');
+    assert.match(f.db.jobs[0].error, /approved quote/);
+    const g = fixture(), other = await g.engine.quoteManual(args);
+    await g.engine.requestManual(other);
+    g.d.videoSubmission = async () => ({ usd: .56, params: ticket().plan.params, body: {} });
+    await g.engine.tick(); assert.deepEqual(g.calls, ['still']); assert.ok(g.db.jobs[0].source);
+    assert.equal(chargedUSD(g.db.jobs[0]), .1);
+});
+test('manual jobs share slots, budgets, hidden-tab holds and ambiguous submission recovery', async () => {
+    const f = fixture(); await f.engine.request(args, turn(2));
+    const quote = await f.engine.quoteManual(args); await f.engine.requestManual(quote);
+    await assert.rejects(f.engine.requestManual(await f.engine.quoteManual(args)), /Two video jobs/);
+    f.visible = false; await f.engine.tick(); assert.deepEqual(f.calls, []);
+    f.visible = true; f.queueError = new TypeError('Failed to fetch');
+    await f.engine.tick(); await f.make().tick();
+    assert.deepEqual(f.calls, ['still', 'queue']); assert.equal(f.db.jobs[1].state, 'uncertain');
 });
 test('unknown extra reference pricing or unsupported ratio blocks a paid still', () => {
     const s = own(); delete s.editModels[0].pricing.inputImages;
