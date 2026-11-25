@@ -250,5 +250,5 @@ jQuery(() => {
         toastr.warning('Companion video could not load: ' + error.message);
     });
     refresh();
-    console.info('[Venice Image Bridge] 0.8.1 loaded');
+    console.info('[Venice Image Bridge] 0.9.0 loaded');
 });

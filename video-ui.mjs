@@ -1,14 +1,22 @@
 import { createCompanionHost } from './video-host.mjs';
 import { createCompanionVideo, config, validateConfig, VIDEO_TOOL, round, chargedUSD } from './video-core.mjs';
-import { createVideoRig, money, safeError, activeJob } from './video-rig-core.mjs';
+import { createVideoRig, money, safeError, activeJob, videoDurations } from './video-rig-core.mjs';
 
 let mounted;
 export async function mountCompanionVideo(host) {
     if (mounted) return mounted;
     const d = createCompanionHost(host), rig = createVideoRig(d), engine = createCompanionVideo(d, rig);
     const root = document.createElement('div'); root.id = 'venice_companion_video';
-    root.innerHTML = `<hr><h4>Companion video · 0.8.1</h4>
+    root.innerHTML = `<hr><h4>Companion video · 0.9.0</h4>
       <p>Reference-based clips for you and your companions.</p>
+      <h4>Shared video model</h4>
+      <p>Applies to your manual videos and every enabled companion. Saved and queued clips keep their original model.</p>
+      <button class="menu_button" data-action="models">Refresh available video models</button>
+      <label>Video model<select class="text_pole" data-field="model"></select></label>
+      <label>Default clip length<select class="text_pole" data-field="duration"></select></label>
+      <label>Resolution<select class="text_pole" data-field="resolution"></select></label>
+      <button class="menu_button" data-action="save-model">Save video model</button>
+      <p data-model-status role="status"></p>
       <details><summary><b>Separate video references</b></summary>
       <p>Save a different image for videos without changing your picture references. Your video reference is shared across chats; each companion has their own.</p>
       <label>Reference for<select class="text_pole" data-vref="subject"><option value="companion">Current companion</option><option value="user">Me</option></select></label>
@@ -27,7 +35,7 @@ export async function mountCompanionVideo(host) {
       <label>Starting scene<textarea class="text_pole" data-manual="scene" rows="3" maxlength="1200" placeholder="Clothing, pose, setting and lighting…"></textarea></label>
       <label>Movement<textarea class="text_pole" data-manual="motion" rows="3" maxlength="1000" placeholder="What moves, how the camera moves, and how the clip ends…"></textarea></label>
       <label>Shape<select class="text_pole" data-manual="aspect_ratio"><option value="9:16">Portrait · 9:16</option><option value="16:9">Landscape · 16:9</option></select></label>
-      <label>Length<select class="text_pole" data-manual="duration"><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option></select></label>
+      <label>Length<select class="text_pole" data-manual="duration"><option value="10">10 seconds</option><option value="15">15 seconds</option></select></label>
       <p>Uses the saved audio, resolution and shared spending limits below. Longer clips depend on the live model catalogue. Checking a price does not generate anything.</p>
       <button class="menu_button" data-action="manual-quote">Check price for this video</button>
       <p data-manual-status role="status">Choose your subject and describe the scene and movement.</p>
@@ -37,11 +45,10 @@ export async function mountCompanionVideo(host) {
       <p data-character></p>
       <label class="checkbox_label"><input type="checkbox" data-field="enabled"><span>Enable video for this companion</span></label>
       <p data-availability role="status"></p>
-      <label>Audio<select class="text_pole" data-field="audio"><option value="ambient">Ambient · no companion voice</option><option value="silent">Silent · requires a verified API test</option></select></label>
-      <label>Resolution<select class="text_pole" data-field="resolution"><option value="">Lowest advertised · audition setting</option><option value="720p">720p</option><option value="1080p">1080p</option></select></label>
+      <label>Audio<select class="text_pole" data-field="audio"><option value="ambient">Model audio where supported · no companion voice</option><option value="silent">Silent · requires a verified API test</option></select></label>
       <p>Silent mode unlocks only after a silent connection test finishes and you mark its playback silent. Lip-sync is not part of this version.</p>
       <button class="menu_button" data-action="quote">Check live prices and set initial budget</button>
-      <p data-quote>No generation happens when checking prices. Uses this companion’s saved reference model, 9:16 and five seconds.</p>
+      <p data-quote>No generation happens when checking prices. Uses this companion’s reference model, 9:16 and the selected default clip length.</p>
       <label>Daily submissions<input class="text_pole" type="number" min="1" max="100" data-field="dailyCount"></label>
       <label>Submissions per rolling 30 days<input class="text_pole" type="number" min="1" max="3000" data-field="monthlyCount"></label>
       <label>Complete-job ceiling · USD<input class="text_pole" type="number" min="0.01" max="3" step="0.01" data-field="perJobUSD"></label>
@@ -64,6 +71,42 @@ export async function mountCompanionVideo(host) {
     const $ = s => root.querySelector(s), status = s => $('[data-status]').textContent = s;
     let formDirty = false, working = false, timer, lastRetention = 0;
     let manualQuote = null, manualRevision = 0;
+    let modelCatalogue = d.cached().videoModels || [];
+    function options(selector, items, selected) {
+        const el = $(selector); el.replaceChildren();
+        for (const [value, label, disabled] of items) {
+            const o = document.createElement('option'); o.value = String(value); o.textContent = label; o.disabled = !!disabled; el.append(o);
+        }
+        el.value = String(selected);
+    }
+    function modelOptions(reset = false) {
+        const model = modelCatalogue.find(m => m.id === $('[data-field="model"]').value);
+        const durations = model ? videoDurations(model).filter(n=>n>=10) : [10,15];
+        const resolutions = model?.model_spec.constraints.resolutions || ['720p','1080p'];
+        const c = config(d.cached());
+        const oldDuration = Number($('[data-field="duration"]').value || c.duration);
+        const duration = reset || !durations.includes(oldDuration) ? (durations.includes(10) ? 10 : durations[0]) : oldDuration;
+        const resolution = reset ? '' : $('[data-field="resolution"]').value;
+        const resItems = [['',resolutions.length ? 'Lowest available' : 'Model default (fixed)'], ...resolutions.map(v => [v,v])];
+        if (resolution && !resolutions.includes(resolution) && !reset) resItems.push([resolution,`${resolution} · unavailable; choose another`]);
+        options('[data-field="duration"]', durations.map(v => [v,`${v} seconds`]), duration);
+        options('[data-field="resolution"]', resItems, resolution);
+        const manual = Number($('[data-manual="duration"]').value);
+        options('[data-manual="duration"]', durations.map(v => [v,`${v} seconds`]), reset || !durations.includes(manual) ? duration : manual);
+    }
+    function modelMenu() {
+        const c = config(d.cached()), selected = formDirty ? $('[data-field="model"]').value || c.model : c.model;
+        const choices = modelCatalogue.map(m => [m.id,`${m.model_spec.name} · ${m.id}${m.model_spec.offline ? ' · offline' : ''}`,m.model_spec.offline]);
+        if (!choices.some(x=>x[0]===selected)) choices.push([selected,`${selected} · refresh catalogue`]);
+        options('[data-field="model"]', choices, selected); modelOptions();
+    }
+    function selectedModelSettings() {
+        const model = $('[data-field="model"]').value, duration = Number($('[data-field="duration"]').value), resolution = $('[data-field="resolution"]').value;
+        const m = modelCatalogue.find(m=>m.id===model);
+        if (!m || m.model_spec.offline) throw new Error('Refresh the catalogue and choose an available video model.');
+        if (duration < 10 || !videoDurations(m).includes(duration) || resolution && !m.model_spec.constraints.resolutions?.includes(resolution)) throw new Error('Choose a duration and resolution supported by this model.');
+        return {model,duration,resolution};
+    }
     const manualFields = ['subject', 'scene', 'motion', 'aspect_ratio', 'duration'];
     function manualArgs() {
         return Object.fromEntries(manualFields.map(k => [k, k === 'duration' ? Number($(`[data-manual="${k}"]`).value) : $(`[data-manual="${k}"]`).value]));
@@ -113,13 +156,17 @@ export async function mountCompanionVideo(host) {
     });
     manualFields.forEach(k => $(`[data-manual="${k}"]`).addEventListener('input', () => { invalidateManual(); renderReferences(); }));
     root.querySelectorAll('[data-field]').forEach(el => el.addEventListener('change', () => { formDirty = true; }));
+    for (const key of ['resolution','duration']) $(`[data-field="${key}"]`).addEventListener('change', () => { formDirty = true; invalidateManual(); $('[data-model-status]').textContent = 'Press Save video model to apply these options.'; });
     const fields = ['audio', 'resolution', 'dailyCount', 'monthlyCount', 'perJobUSD', 'dailyUSD', 'monthlyUSD', 'retentionDays', 'storageMB'];
+    fields.push('model', 'duration');
+    $('[data-field="model"]').addEventListener('change', () => { formDirty = true; modelOptions(true); invalidateManual(); $('[data-model-status]').textContent = 'Press Save video model to apply this choice to new clips.'; });
     function current() { try { return d.target(); } catch { return null; } }
     function render(force = false) {
         const db = d.cached(), c = config(db), target = current();
         $('[data-character]').textContent = target ? `Companion: ${target.name}` : 'Open a saved companion chat.';
         $('[data-availability]').textContent = d.availability().reason;
         renderReferences();
+        modelMenu();
         if (!formDirty || force) {
             fields.forEach(k => $(`[data-field="${k}"]`).value = c[k] ?? '');
             $('[data-field="enabled"]').checked = !!c.characters[target?.avatar];
@@ -127,7 +174,7 @@ export async function mountCompanionVideo(host) {
         }
         $('[data-field="enabled"]').disabled = !target;
         $('[data-budget]').textContent = `Daily: ${c.dailyUSD === null ? 'awaiting live quote' : money(c.dailyUSD)}. Rolling 30 days: ${c.monthlyUSD === null ? 'awaiting live quote' : money(c.monthlyUSD)}. One credit = US$0.01.`;
-        if (db.lastVideoQuote) $('[data-quote]').textContent = `Latest five-second quote: still ${money(db.lastVideoQuote.still)}, video ${money(db.lastVideoQuote.video)}, combined ${money(db.lastVideoQuote.total)}. Quotes are checked again before spending.`;
+        if (db.lastVideoQuote) $('[data-quote]').textContent = `Latest quote (${db.lastVideoQuote.model || 'previous model'}, ${db.lastVideoQuote.duration || 5}s): still ${money(db.lastVideoQuote.still)}, video ${money(db.lastVideoQuote.video)}, combined ${money(db.lastVideoQuote.total)}. Quotes are checked again before spending.`;
         const jobs = $('[data-jobs]'); jobs.replaceChildren();
         for (const j of db.jobs.filter(j => j.kind === 'companion').slice(-12).reverse()) {
             const box = document.createElement('div'), p = document.createElement('p');
@@ -156,11 +203,32 @@ export async function mountCompanionVideo(host) {
         catch (e) { $('[data-background]').textContent = `Background check: ${safeError(e)}`; }
         finally { timer = setTimeout(tick, d.cached().jobs.some(activeJob) ? 15000 : 60000); }
     }
-    function run(fn) { return async () => {
+    function run(fn, errorTarget = '[data-status]') { return async () => {
         if (working) return; working = true;
-        try { await fn(); render(); } catch (e) { status(safeError(e)); }
+        try { await fn(); render(); } catch (e) { $(errorTarget).textContent = safeError(e); }
         finally { working = false; }
     }; }
+    $('[data-action="models"]').onclick = run(async () => {
+        $('[data-model-status]').textContent = 'Loading Venice’s available image-to-video models…';
+        const models = await d.loadVideoModels();
+        if (!models.length) throw new Error('No compatible image-to-video models returned.');
+        modelCatalogue = models;
+        await d.update(db => { db.videoModels = models; });
+        modelMenu();
+        $('[data-model-status]').textContent = `${models.length} image-to-video models loaded. Prices are checked for your chosen clip before generation. Existing budgets stay in place.`;
+    }, '[data-model-status]');
+    $('[data-action="save-model"]').onclick = run(async () => {
+        const values = selectedModelSettings();
+        const other = fields.filter(k => !['model','duration','resolution'].includes(k));
+        const draft = Object.fromEntries(other.map(k => [k,$(`[data-field="${k}"]`).value]));
+        const enabled = $('[data-field="enabled"]').checked;
+        await d.update(db => { db.videoConfig = validateConfig({ ...config(db), ...values }); });
+        invalidateManual(); formDirty = false; render(true);
+        for (const key of other) $(`[data-field="${key}"]`).value = draft[key];
+        $('[data-field="enabled"]').checked = enabled; formDirty = true;
+        $('[data-manual="duration"]').value = String(values.duration);
+        $('[data-model-status]').textContent = `Saved ${values.model} · ${values.duration}s · ${values.resolution || 'model default/lowest'}. Applies to your videos and enabled companions.`;
+    }, '[data-model-status]');
     function runManual(fn) { return async () => {
         if (working) return; working = true;
         $('[data-action="manual-quote"]').disabled = true;
@@ -173,6 +241,8 @@ export async function mountCompanionVideo(host) {
         }
     }; }
     $('[data-action="manual-quote"]').onclick = runManual(async () => {
+        const saved = config(d.cached());
+        if ($('[data-field="model"]').value !== saved.model || Number($('[data-field="duration"]').value) !== saved.duration || $('[data-field="resolution"]').value !== saved.resolution) throw new Error('Press Save video model before checking your clip price.');
         invalidateManual(); const revision = manualRevision;
         $('[data-manual-status]').textContent = 'Checking the reference models and live price…';
         const quote = await engine.quoteManual(manualArgs());
@@ -193,11 +263,11 @@ export async function mountCompanionVideo(host) {
     $('[data-action="quote"]').onclick = run(async () => {
         const target = d.target(); d.assertTarget(target);
         const c = config(await d.read());
-        c.audio = $('[data-field="audio"]').value; c.resolution = $('[data-field="resolution"]').value;
+        c.audio = $('[data-field="audio"]').value; c.resolution = $('[data-field="resolution"]').value; c.model = $('[data-field="model"]').value; c.duration = Number($('[data-field="duration"]').value);
         if (c.audio === 'silent' && !c.silentVerified) throw new Error('Run and mark a silent API connection test before selecting silent.');
         status('Checking the current catalogue and quote. No generation…');
         const t = await d.prepare({ subject: 'companion', scene: 'A relaxed, fully clothed portrait facing the camera in a softly lit room.',
-            motion: 'The person blinks and makes a small natural head movement. The camera remains fixed.', aspect_ratio: '9:16', duration: 5 }, c);
+            motion: 'The person blinks and makes a small natural head movement. The camera remains fixed.', aspect_ratio: '9:16', duration: c.duration }, c);
         const total = round(t.still.usd + t.videoUSD);
         if (total > c.perJobUSD) throw new Error('The combined quote exceeds the complete-job ceiling.');
         await d.update(db => {
@@ -205,7 +275,7 @@ export async function mountCompanionVideo(host) {
             cfg.dailyUSD ??= Math.ceil(total * cfg.dailyCount * 100) / 100;
             cfg.monthlyUSD ??= Math.ceil(total * cfg.monthlyCount * 100) / 100;
             db.videoConfig = cfg;
-            db.lastVideoQuote = { still: t.still.usd, video: t.videoUSD, total, at: Date.now() };
+            db.lastVideoQuote = { still: t.still.usd, video: t.videoUSD, total, model: c.model, duration: c.duration, at: Date.now() };
         });
         // A quote must never uncheck an unsaved Enable choice or reset other form edits.
         const draft = Object.fromEntries(fields.map(k => [k, $(`[data-field="${k}"]`).value]));
@@ -219,7 +289,7 @@ export async function mountCompanionVideo(host) {
     $('[data-action="save"]').onclick = run(async () => {
         const target = d.target(); d.assertTarget(target);
         const enabled = $('[data-field="enabled"]').checked;
-        const values = Object.fromEntries(fields.map(k => [k, ['audio', 'resolution'].includes(k) ? $(`[data-field="${k}"]`).value : $(`[data-field="${k}"]`).value === '' ? null : Number($(`[data-field="${k}"]`).value)]));
+        const values = Object.fromEntries(fields.map(k => [k, ['audio', 'resolution', 'model'].includes(k) ? $(`[data-field="${k}"]`).value : $(`[data-field="${k}"]`).value === '' ? null : Number($(`[data-field="${k}"]`).value)]));
         await d.update(db => {
             d.assertTarget(target);
             const c = config(db);
@@ -243,7 +313,7 @@ export async function mountCompanionVideo(host) {
             scene: { type: 'string', description: 'Starting composition, clothing, pose and setting; maximum 1200 characters.' },
             motion: { type: 'string', description: 'Motion only: starting state, camera movement, ending state; maximum 1000 characters.' },
             aspect_ratio: { type: 'string', enum: ['9:16', '16:9'] },
-            duration: { type: 'integer', enum: [5, 10, 15], description: 'Default 5 seconds; use a longer tier only if requested.' },
+            duration: { type: 'integer', minimum: 10, maximum: 30, description: 'Omit to use the user’s saved default duration (at least 10 seconds). Supply a different duration only if requested; the selected model must support it.' },
         }, required: ['subject', 'scene', 'motion', 'aspect_ratio'], additionalProperties: false },
         shouldRegister: () => d.ready(),
         action: async args => {
@@ -265,7 +335,8 @@ export async function mountCompanionVideo(host) {
     host.eventSource.on(host.event_types.CHAT_CHANGED, () => { formDirty = false; invalidateManual(); $('[data-vref="file"]').value = ''; $('[data-vref-status]').textContent = ''; render(true); });
     host.eventSource.on(host.event_types.GENERATION_ENDED, () => { clearTimeout(timer); timer = setTimeout(tick, 1000); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { clearTimeout(timer); timer = setTimeout(tick, 1000); } });
-    await d.read(); render(true); status('Ready. Check live prices before enabling your first companion.');
+    await d.read(); $('[data-manual="duration"]').value = String(config(d.cached()).duration); render(true); status('Ready. Check live prices before enabling your first companion.');
     mounted = { d, engine, render }; timer = setTimeout(tick, 1500);
+    if (!modelCatalogue.length) void $('[data-action="models"]').onclick();
     return mounted;
 }

@@ -28,7 +28,7 @@ test('actual companion host freezes reference identity, prepares a fresh still a
                 pricing: { quality: { '1K': { high: { usd: .1 } } } } } }] }));
             assert.equal(path, '/image/multi-edit'); return new Response(png);
         },
-        catalogue: async () => ({ data: [{ id: rig.VIDEO_MODEL, model_spec: { capabilities: { supportsAudioConfig: true }, constraints: { durations: ['5s'], resolutions: ['720p'], aspect_ratios: ['9:16'] } } }] }),
+        catalogue: async () => ({ data: [{id:'alternate-image-to-video',model_spec:{constraints:{model_type:'image-to-video',durations:['10s','15s'],resolutions:[],audio:false}}},{ id: rig.VIDEO_MODEL, model_spec: { capabilities: { supportsAudioConfig: true }, constraints: { durations: ['5s', '10s'], resolutions: ['720p'], aspect_ratios: ['9:16'] } } }] }),
         quote: async () => ({ quote: .55 }),
         saveAsset: async (job, b, name) => { const path = '/user/files/' + name; saved.set(path, b); return { path, bytes: b.size, sha256: await digest(b), verifiedAt: 1 }; },
         request: async path => new Response(saved.get(path)),
@@ -49,9 +49,14 @@ test('actual companion host freezes reference identity, prepares a fresh still a
     const d = m.namespace.createCompanionHost({ getContext: () => context, getSettings: () => own, extension_settings: {},
         isGenerating: () => generating, hasPendingFileAttachment: () => false,
         loadReference: async path => { loads.push(path); return dataURL(png); }, bridge: { busy: false, initiationStatus: () => ({ ready: true }), withVideoStillLock: fn => fn() } });
-    const c = core.config(db), args = { subject: 'companion', scene: 'A still beside a window.', motion: 'A blink; camera fixed.', aspect_ratio: '9:16', duration: 5 };
+    const c = core.config(db), args = { subject: 'companion', scene: 'A still beside a window.', motion: 'A blink; camera fixed.', aspect_ratio: '9:16', duration: 10 };
     db.videoReferences = { 'Ava.png': { url: '/user/files/video-ref.png', title: 'Video only' } };
-    const prepared = await d.prepare(args, c); assert.equal(prepared.still.usd, .1); assert.equal(prepared.videoUSD, .55);
+    await assert.rejects(d.prepare({ ...args, duration:5 },c), /at least 10/);
+    const prepared = await d.prepare(args, c);
+    const alternate = await d.prepare({ ...args, duration: undefined }, { ...c, model:'alternate-image-to-video', duration:15 });
+    assert.equal(alternate.plan.params.model,'alternate-image-to-video'); assert.equal(alternate.plan.params.duration,'15s'); assert.equal(alternate.plan.params.resolution,undefined);
+    const rechecked = await d.refreshQuote({ still:alternate.still, model:'alternate-image-to-video', params:alternate.plan.params, mode:alternate.plan.mode }, c);
+    assert.equal(rechecked.plan.params.model,'alternate-image-to-video'); assert.equal(rechecked.plan.params.duration,'15s'); assert.equal(prepared.still.usd, .1); assert.equal(prepared.videoUSD, .55);
     assert.equal(own.portraits['Ava.png'].url, '/user/files/ref.png');
     own.portraits['Ava.png'].url = '/user/files/different.png';
     db.videoReferences['Ava.png'].url = '/user/files/new-video-ref.png';

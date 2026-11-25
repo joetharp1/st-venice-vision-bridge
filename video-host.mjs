@@ -1,5 +1,5 @@
 import { createRigHost, dataURL, digest, localFile } from './video-rig-host.mjs';
-import { planVideo, quoteUsd, RIG_KEY } from './video-rig-core.mjs';
+import { planVideo, quoteUsd, RIG_KEY, videoModels, videoDurations } from './video-rig-core.mjs';
 import { stillPlan, config, findAnnouncement, videoPortraits } from './video-core.mjs';
 import { attachPortrait, editedImage, USER_PORTRAIT_KEY, validatePortrait } from './portraits.mjs';
 import { parseModels } from './models.mjs';
@@ -32,16 +32,19 @@ export function createCompanionHost(host) {
         const avatar = args.avatar || characterKey(host.getContext());
         const still = stillPlan(own, avatar, host.extension_settings['st-venice-image'] || {}, args);
         const [w, h] = args.aspect_ratio.split(':').map(Number);
-        const duration = args.duration ?? 5;
+        const duration = args.duration ?? c.duration ?? 10;
+        if (!frozen && duration < 10) throw new Error('Choose a video duration of at least 10 seconds.');
         const prompt = String(args.motion || '').trim() + '\nPreserve the starting frame identity, clothing and composition. Introduce no new objects or people. No speech, singing or music; environmental ambience only.';
         const catalogue = await d.catalogue();
-        const plan = planVideo(catalogue, c.audio, w * 100, h * 100, prompt, duration, c.resolution || null);
+        const plan = planVideo(catalogue, c.audio, w * 100, h * 100, prompt, duration, c.resolution || null, c.model);
         const videoUSD = quoteUsd(await d.quote(plan.params));
         const refs = Object.fromEntries([avatar, USER_PORTRAIT_KEY].filter(k => own.portraits?.[k]).map(k => [k, own.portraits[k]]));
         return { still: { ...still, recipe: { ...args, avatar, duration }, references: { portraits: refs } }, plan, videoUSD };
     }
     return Object.assign(d, {
         prepare,
+        loadVideoModels: async () => videoModels(await d.catalogue()).filter(m => videoDurations(m).some(n => n >= 10)).map(m => ({ id: m.id,
+            model_spec: { name: m.model_spec?.name || m.id, offline: !!(m.offline || m.model_spec?.offline), constraints: m.model_spec?.constraints || {} } })),
         saveVideoReference: async (subject, file) => {
             if (!['user', 'companion'].includes(subject)) throw new Error('Choose yourself or the current companion.');
             const target = d.target(), key = subject === 'user' ? USER_PORTRAIT_KEY : target.avatar;
@@ -61,7 +64,7 @@ export function createCompanionHost(host) {
             const target = d.target(), key = subject === 'user' ? USER_PORTRAIT_KEY : target.avatar;
             await d.update(db => { d.assertTarget(target); if (db.videoReferences) delete db.videoReferences[key]; });
         },
-        refreshQuote: (job, c) => prepare(job.still.recipe, job.requestedBy === 'user' ? { ...c, audio: job.mode, resolution: job.params.resolution } : c, job.still.references),
+        refreshQuote: (job, c) => prepare(job.still.recipe, { ...c, model: job.model || job.params.model, audio: job.mode, resolution: job.params.resolution || '' }, job.still.references),
         referencePreview: subject => {
             const c = host.getContext(), db = d.cached(), own = videoPortraits(host.getSettings(), db);
             const refs = [{ key: USER_PORTRAIT_KEY, label: c.name1 || 'You' }, { key: characterKey(c), label: c.name2 || 'Companion' }];
@@ -78,7 +81,7 @@ export function createCompanionHost(host) {
         },
         ready: () => availability().ready,
         availability,
-        report: () => JSON.stringify({ ...JSON.parse(baseReport()), companionVideo: '0.8.1', availability: availability() }, null, 2),
+        report: () => JSON.stringify({ ...JSON.parse(baseReport()), companionVideo: '0.9.0', availability: availability() }, null, 2),
         announcement: async job => {
             if (stopped.has(job.id)) return 'abort';
             if (host.isGenerating()) return null;
@@ -129,11 +132,11 @@ export function createCompanionHost(host) {
             const blob = await response.blob();
             if (await digest(blob) !== job.source.sha256) throw new Error('Starting still changed; video submission cancelled.');
             const plan = planVideo(await d.catalogue(), job.mode, job.source.width, job.source.height,
-                job.plan.prompt, job.still.recipe.duration, job.params.resolution);
+                job.plan.prompt, job.still.recipe.duration, job.params.resolution, job.model);
             const usd = quoteUsd(await d.quote(plan.params));
             const body = { ...plan.params, prompt: plan.prompt, image_url: await dataURL(blob) };
-            // I2V inherits dimensions from the frame; aspect_ratio is a quote field, not an I2V queue override.
-            delete body.aspect_ratio;
+            // The legacy Wan flow inherits its ratio from the still. Other models use advertised ratio controls.
+            if (plan.params.model === 'wan-2-7-enhanced-image-to-video') delete body.aspect_ratio;
             return { usd, params: plan.params, body };
         },
         stop: async () => {

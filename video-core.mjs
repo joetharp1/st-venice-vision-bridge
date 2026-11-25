@@ -1,4 +1,4 @@
-import { activeJob, JOB_TTL, safeError, clone } from './video-rig-core.mjs';
+import { activeJob, JOB_TTL, safeError, clone, VIDEO_MODEL } from './video-rig-core.mjs';
 import { portraitPlan, userPortraitPlan, USER_PORTRAIT_KEY, INITIATION_TAIL } from './portraits.mjs';
 import { modelOptions } from './models.mjs';
 
@@ -6,7 +6,7 @@ export const VIDEO_TOOL = 'VeniceCreateVideo';
 export const DAY = 86400000;
 export const VIDEO_DEFAULTS = Object.freeze({ characters: {}, dailyCount: 6, monthlyCount: 90,
     perJobUSD: 3, dailyUSD: null, monthlyUSD: null, retentionDays: 30, storageMB: 2048,
-    audio: 'ambient', resolution: '', silentVerified: false });
+    audio: 'ambient', resolution: '', model: VIDEO_MODEL, duration: 10, silentVerified: false });
 export const config = db => ({ ...VIDEO_DEFAULTS, ...db.videoConfig });
 export const round = x => Math.round(x * 1000000) / 1000000;
 // Video-only faces override URLs on a copy. Ordinary image settings are never mutated.
@@ -27,7 +27,9 @@ export function validateConfig(c) {
     }
     if (c.perJobUSD > 3) throw new Error('The complete-job ceiling cannot exceed US$3 in this release.');
     if (!['ambient', 'silent'].includes(c.audio) || c.audio === 'silent' && !c.silentVerified) throw new Error('Silent mode requires a successful silent API audition first.');
-    if (!['', '720p', '1080p'].includes(c.resolution)) throw new Error('Choose lowest available, 720p or 1080p.');
+    if (typeof c.model !== 'string' || !c.model || c.model.length > 200) throw new Error('Choose a video model.');
+    if (!Number.isInteger(c.duration) || c.duration < 10 || c.duration > 30) throw new Error('Choose a supported duration from 10–30 seconds.');
+    if (typeof c.resolution !== 'string' || !/^(?:\d{3,4}p|[1248]k)?$/i.test(c.resolution)) throw new Error('Choose a resolution from the model catalogue.');
     return c;
 }
 export function stillPlan(own, avatar, legacy, args) {

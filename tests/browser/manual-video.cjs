@@ -52,15 +52,24 @@ const { chromium } = require(path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MO
    const json=body=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
    if(p.endsWith('/models') && new URL(req.url()).searchParams.get('type')==='inpaint') return json({data:[{type:'inpaint',id:'seed',model_spec:{constraints:{aspectRatios:['1:1','9:16','16:9'],resolutions:['1K'],qualities:['high'],promptCharacterLimit:3000,combineImages:true,maxInputImages:2},pricing:{quality:{'1K':{high:{usd:.1}}},inputImages:{included:2}}}}]});
    if(p.endsWith('/image/multi-edit')){stillCount++;assert.equal(req.postDataJSON().images.length,2);return route.fulfill({status:200,contentType:'image/png',body:still});}
-   if(p.endsWith('/models'))return json({data:[{id:'wan-2-7-enhanced-image-to-video',model_spec:{capabilities:{supportsAudioConfig:true},constraints:{durations:['5s','10s'],resolutions:['1080p','720p']}}}]});
+   if(p.endsWith('/models'))return json({data:[{id:'wan-2-7-enhanced-image-to-video',model_spec:{capabilities:{supportsAudioConfig:true},constraints:{durations:['5s','10s'],resolutions:['1080p','720p']}}},{id:'other-image-to-video',model_spec:{name:'Other',constraints:{model_type:'image-to-video',durations:['10s','15s'],resolutions:['480p','720p'],audio_configurable:true}}},{id:'short-image-to-video',model_spec:{constraints:{model_type:'image-to-video',durations:['4s','8s'],resolutions:['720p']}}}]});
    if(p.endsWith('/quote')){assert.equal(req.postDataJSON().audio,true);return json({quote:0.55});}
-   if(p.endsWith('/queue')){queueCount++;assert.equal(req.postDataJSON().audio,true);return json({model:'wan-2-7-enhanced-image-to-video',queue_id:'fixture-queue-'+queueCount});}
+   if(p.endsWith('/queue')){queueCount++;assert.equal(req.postDataJSON().audio,true);assert.equal(req.postDataJSON().model,'other-image-to-video');assert.equal(req.postDataJSON().duration,'15s');return json({model:req.postDataJSON().model,queue_id:'fixture-queue-'+queueCount});}
    if(p.endsWith('/retrieve')){const id=req.postDataJSON().queue_id;retrieves.push(id);if(ready.has(id))return route.fulfill({status:200,contentType:'video/mp4',body:mp4});return json({status:'PROCESSING'});}
    if(p.endsWith('/complete')){cleanup++;return json({success:true});}
    throw new Error('Unexpected provider call '+p);
   });
   const url=`http://127.0.0.1:${server.address().port}`;
   let page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(url);await page.waitForFunction(()=>window.rig);
+  await page.waitForFunction(()=>document.querySelector('[data-model-status]').textContent.includes('models loaded'));
+  assert.equal(await page.locator('[data-field="model"] option[value="short-image-to-video"]').count(),0);
+  assert.equal(await page.locator('[data-field="duration"]').inputValue(),'10');
+  await page.locator('[data-field="model"]').selectOption('other-image-to-video');
+  await page.locator('[data-field="duration"]').selectOption('15');
+  await page.locator('[data-action="save-model"]').click();
+  await page.waitForFunction(()=>document.querySelector('[data-model-status]').textContent.startsWith('Saved other'));
+  assert.equal(ext['venice-video-rig-v1'].videoConfig.model,'other-image-to-video');
+  assert.equal(ext['venice-video-rig-v1'].videoConfig.dailyUSD,4.2);
   await page.getByText('Separate video references', {exact:true}).click();
   for (const subject of ['user','companion']) {
     await page.locator('[data-vref="subject"]').selectOption(subject);
@@ -73,6 +82,8 @@ const { chromium } = require(path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MO
   assert.equal(ext['st-venice-vision-bridge'].portraits.__human_reference__.url,'/user/images/still.png');
   assert.match(ext['venice-video-rig-v1'].videoReferences['Ava.png'].url,/venice_video_reference_/);
   await page.reload();await page.waitForFunction(()=>window.rig);
+  assert.equal(await page.locator('[data-field="model"]').inputValue(),'other-image-to-video');
+  await page.locator('[data-manual="duration"]').selectOption('15');
   await page.locator('[data-manual="subject"]').selectOption('together');
   await page.locator('[data-manual="scene"]').fill('Two people in a garden, fully clothed.');
   await page.locator('[data-manual="motion"]').fill('Both wave. The camera stays fixed.');
@@ -89,6 +100,7 @@ const { chromium } = require(path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MO
   assert.equal(stillCount,1);assert.equal(queueCount,1);
   assert.equal(ext['venice-video-rig-v1'].jobs[0].requestedBy,'user');
   assert.equal(ext['venice-video-rig-v1'].jobs[0].approvedUSD,.65);
+  assert.equal(ext['venice-video-rig-v1'].jobs[0].model,'other-image-to-video');
   ready.add('fixture-queue-1');
   await page.reload();await page.waitForFunction(()=>window.rig);
   await page.locator('[data-action="resume"]').click();

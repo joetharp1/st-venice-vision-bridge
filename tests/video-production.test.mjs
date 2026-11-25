@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCompanionVideo, videoPortraits, VIDEO_DEFAULTS, VIDEO_TOOL, stillPlan, budget, chargedUSD, findAnnouncement, DAY } from '../video-core.mjs';
-import { createVideoRig, planVideo, JOB_TTL, VIDEO_MODEL } from '../video-rig-core.mjs';
+import { createVideoRig, planVideo, JOB_TTL, VIDEO_MODEL, videoModels } from '../video-rig-core.mjs';
 import { portraitPlan, INITIATION_TAIL } from '../portraits.mjs';
 import { createBridge } from '../runtime.mjs';
 
@@ -214,4 +214,17 @@ test('separate video references override only video faces, preserving image mode
     assert.deepEqual(original.portraits.__human_reference__, before.portraits.__human_reference__);
     delete db.videoReferences['Ava.png'];
     assert.equal(videoPortraits(original, db).portraits['Ava.png'].url, '/user/files/ava.png');
+});
+
+test('video model selection uses live durations, native audio flags and optional resolution; incompatible tasks are excluded', () => {
+    const m = (id, constraints) => ({id,model_spec:{constraints}});
+    const catalogue = {data:[m('new-image-to-video',{model_type:'image-to-video',durations:['10s','15s'],resolutions:['2K','768P'],audio_configurable:true}),m('fixed-image-to-video',{model_type:'image-to-video',durations:['10s'],resolutions:[],audio:false}),m('new-reference-to-video',{model_type:'image-to-video'}),m('text',{model_type:'text-to-video'})]};
+    assert.equal(videoModels(catalogue).length,2);
+    const plan = planVideo(catalogue,'ambient',900,1600,'Move gently.',15,null,'new-image-to-video');
+    assert.equal(plan.params.model,'new-image-to-video'); assert.equal(plan.params.duration,'15s'); assert.equal(plan.params.resolution,'768P'); assert.equal(plan.params.audio,true);
+    const fixed = planVideo(catalogue,'silent',900,1600,'Move.',10,null,'fixed-image-to-video');
+    assert.equal(fixed.params.resolution,undefined); assert.equal(fixed.params.audio,undefined);
+    assert.throws(()=>planVideo(catalogue,'ambient',900,1600,'Move.',5,null,'new-image-to-video'),/duration/);
+    assert.throws(()=>planVideo(catalogue,'ambient',900,1600,'Move.',10,'1080p','fixed-image-to-video'),/resolution/);
+    assert.throws(()=>planVideo(catalogue,'ambient',900,1600,'Move.',10,null,'new-reference-to-video'),/not available/);
 });

@@ -22,7 +22,7 @@ class Element {
     replaceChildren(...nodes) { this.children = nodes; }
 }
 async function fixture() {
-    let db = { jobs: [], videoConfig: structuredClone(core.VIDEO_DEFAULTS) }, calls = 0, readFails = false;
+    let db = { jobs: [], videoModels: [{id:rig.VIDEO_MODEL,model_spec:{name:'Wan',constraints:{durations:['5s','10s','15s'],resolutions:['720p','1080p']}}},{id:'other-image-to-video',model_spec:{name:'Other',constraints:{durations:['10s','15s'],resolutions:[]}}}], videoConfig: structuredClone(core.VIDEO_DEFAULTS) }, calls = 0, readFails = false;
     const container = new Element(), timers = new Map(), events = new Map(), checks = {}, tools = [];
     const target = { avatar: 'Ava.png', chatId: 'chat', name: 'Ava' };
     const d = {
@@ -99,4 +99,16 @@ test('tool diagnostics distinguish unavailability from a successful reservation 
     f.$('[data-field="enabled"]').checked = true; await f.$('[data-action="quote"]').onclick(); await f.$('[data-action="save"]').onclick();
     await f.tools[0].action({ scene: 'private' });
     assert.equal(f.checks.lastToolAttempt.state, 'awaiting_reply'); assert.equal(JSON.stringify(f.checks).includes('private'), false);
+});
+
+test('shared video model save applies duration and fixed resolution without enabling companion tools or raising budgets', async () => {
+    const f = await fixture();
+    f.$('[data-field="model"]').value = 'other-image-to-video'; f.$('[data-field="model"]').listeners.change();
+    f.$('[data-field="duration"]').value = '15';
+    await f.$('[data-action="save-model"]').onclick();
+    assert.equal(f.db.videoConfig.model,'other-image-to-video'); assert.equal(f.db.videoConfig.duration,15);
+    assert.equal(f.db.videoConfig.resolution,''); assert.equal(f.db.videoConfig.dailyUSD,null);
+    assert.equal(f.db.videoConfig.characters['Ava.png'],undefined);
+    assert.equal(f.tools[0].parameters.properties.duration.minimum,10);
+    assert.match(f.$('[data-model-status]').textContent,/Saved other-image-to-video/);
 });

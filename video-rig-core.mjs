@@ -8,23 +8,37 @@ export const money = usd => `US$${Number(usd).toFixed(2)} · ${Number((usd * 100
 export const activeJob = j => ['awaiting_reply', 'prepared', 'preparing', 'still_ready', 'submitting', 'uncertain', 'queued', 'saving'].includes(j.state);
 export const clone = value => structuredClone(value);
 
-export function planVideo(catalogue, mode, width, height, prompt, duration = 5, chosenResolution = null) {
-    const model = catalogue?.data?.find(m => m.id === VIDEO_MODEL);
-    if (!model || model.model_spec?.offline || model.offline) throw new Error('Wan 2.7 Enhanced image-to-video is not available in this account catalogue.');
+export function videoModels(catalogue) {
+    if (!Array.isArray(catalogue?.data)) throw new Error('Invalid video catalogue. Your saved model is unchanged.');
+    return catalogue.data.filter(m => typeof m.id === 'string' &&
+        (m.model_spec?.constraints?.model_type === 'image-to-video' || (!m.model_spec?.constraints?.model_type && m.id.includes('image-to-video'))) &&
+        !/reference-to-video|transition|first-last|multi-angle/.test(m.id) && !m.model_spec?.constraints?.video_input);
+}
+export function videoDurations(model) {
+    return (model?.model_spec?.constraints?.durations || []).filter(x => /^\d+s$/.test(x)).map(x => parseInt(x)).filter(x => x > 0 && x <= 30).sort((a,b) => a-b);
+}
+export function planVideo(catalogue, mode, width, height, prompt, duration = 5, chosenResolution = null, chosenModel = VIDEO_MODEL) {
+    const model = videoModels(catalogue).find(m => m.id === chosenModel);
+    if (!model || model.model_spec?.offline || model.offline) throw new Error('Selected image-to-video model is not available in this account catalogue.');
     const spec = model.model_spec || {}, c = spec.constraints || {};
     const durations = c.durations, resolutions = c.resolutions;
-    if (![5, 10, 15].includes(duration) || !Array.isArray(durations) || !durations.includes(`${duration}s`) || !Array.isArray(resolutions)) throw new Error('Catalogue did not confirm the requested duration. No paid submission made.');
-    const resolution = chosenResolution || [...resolutions].filter(x => /^\d+p$/.test(x)).sort((a, b) => parseInt(a) - parseInt(b))[0];
+    if (!videoDurations(model).includes(duration) || !Array.isArray(resolutions)) throw new Error('Catalogue did not confirm the requested duration. No paid submission made.');
+    const pixels = x => parseFloat(x) * (/k$/i.test(x) ? 540 : 1);
+    const resolution = chosenResolution || [...resolutions].sort((a, b) => pixels(a) - pixels(b))[0];
     if (chosenResolution && !resolutions.includes(chosenResolution)) throw new Error('Selected video resolution is unavailable.');
-    if (!resolution) throw new Error('Catalogue did not supply a supported resolution.');
+    if (resolutions.length && !resolution) throw new Error('Catalogue did not supply a supported resolution.');
     if (!Number.isFinite(width) || !Number.isFinite(height) || width < 256 || height < 256 || width * height > 24000000) throw new Error('Use a still at least 256 pixels on each side, up to 24 megapixels.');
     if (!['silent', 'ambient'].includes(mode)) throw new Error('Select silent-test or ambient mode.');
     // Current docs use this camel-case capability. Unknown means unverified, never true.
-    const audioConfig = spec.capabilities?.supportsAudioConfig === true || spec.supportsAudioConfig === true;
-    if (mode === 'silent' && !audioConfig) throw new Error('Silent mode unavailable: this catalogue does not advertise supportsAudioConfig. Use ambient; no stripping or silent fallback.');
+    const audioConfig = c.audio_configurable === true || spec.capabilities?.supportsAudioConfig === true || spec.supportsAudioConfig === true;
+    if (mode === 'silent' && !audioConfig && c.audio !== false) throw new Error('Silent mode unavailable: this catalogue does not advertise configurable or silent audio.');
     const limit = Math.min(1500, Number(c.prompt_character_limit) || 2500);
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > limit) throw new Error(`Motion prompt must contain 1–${limit} characters.`);
-    const params = { model: VIDEO_MODEL, duration: `${duration}s`, resolution };
+    if (c.reference_image_min_short_side_pixels && Math.min(width,height) < c.reference_image_min_short_side_pixels ||
+        c.reference_image_min_aspect_ratio && width/height < c.reference_image_min_aspect_ratio ||
+        c.reference_image_max_aspect_ratio && width/height > c.reference_image_max_aspect_ratio) throw new Error('Starting image does not meet this model’s size or aspect-ratio requirements.');
+    const params = { model: chosenModel, duration: `${duration}s` };
+    if (resolution) params.resolution = resolution;
     if (audioConfig) params.audio = mode === 'ambient';
     if (Array.isArray(c.aspect_ratios) && c.aspect_ratios.length) {
         const ratio = c.aspect_ratios.find(s => {
