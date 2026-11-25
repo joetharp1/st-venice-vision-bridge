@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCompanionVideo, videoPortraits, VIDEO_DEFAULTS, VIDEO_TOOL, stillPlan, budget, chargedUSD, findAnnouncement, DAY } from '../video-core.mjs';
+import { createCompanionVideo, videoPortraits, VIDEO_DEFAULTS, VIDEO_TOOL, stillPlan, budget, chargedUSD, findAnnouncement, DAY, validateConfig } from '../video-core.mjs';
 import { createVideoRig, planVideo, JOB_TTL, VIDEO_MODEL, videoModels } from '../video-rig-core.mjs';
 import { portraitPlan, INITIATION_TAIL } from '../portraits.mjs';
 import { createBridge } from '../runtime.mjs';
@@ -73,6 +73,17 @@ test('manual expired quotes and changed chats are rejected before any paid opera
     quote.quotedAt = f.d.now(); quote.target.chatId = 'other';
     await assert.rejects(f.engine.requestManual(quote), /Chat changed/);
     assert.deepEqual(f.calls, []); assert.equal(f.db.jobs.length, 0);
+});
+test('seven-dollar ceiling includes the still and preserves daily reservations', () => {
+    const cfg = { ...VIDEO_DEFAULTS, perJobUSD: 7, dailyUSD: 7, monthlyUSD: 63 };
+    assert.equal(validateConfig(cfg).perJobUSD, 7);
+    assert.throws(() => validateConfig({ ...cfg, perJobUSD: 7.01 }), /ceiling/);
+    const db = { videoConfig: cfg, jobs: [] }, now = Date.now();
+    assert.equal(budget(db, now, 7).dailySpend, 0);
+    assert.throws(() => budget(db, now, 7.01), /per-job ceiling/);
+    db.jobs.push({ id: 'reserved', created: now, state: 'queued', charge: 'submitted', usd: 3.38 });
+    assert.throws(() => budget(db, now, 3.7), /spending limit/);
+    assert.equal(budget(db, now, 3.5).dailySpend, 3.38);
 });
 test('manual jobs enforce the approved amount even when the shared budget would permit an increase', async () => {
     const f = fixture(), quote = await f.engine.quoteManual(args);

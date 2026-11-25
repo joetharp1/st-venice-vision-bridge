@@ -25,7 +25,7 @@ export function validateConfig(c) {
         if (c[key] === null && key !== 'perJobUSD') continue;
         if (!Number.isFinite(c[key]) || c[key] <= 0) throw new Error(`${key} must be a positive USD amount.`);
     }
-    if (c.perJobUSD > 3) throw new Error('The complete-job ceiling cannot exceed US$3 in this release.');
+    if (c.perJobUSD > 7) throw new Error('The complete-job ceiling cannot exceed US$7 in this release.');
     if (!['ambient', 'silent'].includes(c.audio) || c.audio === 'silent' && !c.silentVerified) throw new Error('Silent mode requires a successful silent API audition first.');
     if (typeof c.model !== 'string' || !c.model || c.model.length > 200) throw new Error('Choose a video model.');
     if (!Number.isInteger(c.duration) || c.duration < 10 || c.duration > 30) throw new Error('Choose a supported duration from 10–30 seconds.');

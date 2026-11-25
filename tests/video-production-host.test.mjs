@@ -29,11 +29,12 @@ test('actual companion host freezes reference identity, prepares a fresh still a
             assert.equal(path, '/image/multi-edit'); return new Response(png);
         },
         catalogue: async () => ({ data: [{id:'alternate-image-to-video',model_spec:{constraints:{model_type:'image-to-video',durations:['10s','15s'],resolutions:[],audio:false}}},{ id: rig.VIDEO_MODEL, model_spec: { capabilities: { supportsAudioConfig: true }, constraints: { durations: ['5s', '10s'], resolutions: ['720p'], aspect_ratios: ['9:16'] } } }] }),
-        quote: async () => ({ quote: .55 }),
+        quote: async () => ({ quote: videoPrice }),
         saveAsset: async (job, b, name) => { const path = '/user/files/' + name; saved.set(path, b); return { path, bytes: b.size, sha256: await digest(b), verifiedAt: 1 }; },
         request: async path => new Response(saved.get(path)),
         update: async fn => fn(db), savedChat: async () => [{}, ...context.chat],
     };
+    let videoPrice = .55;
     const sandbox = vm.createContext({ console, Blob, Uint8Array, atob, Date, AbortSignal, structuredClone,
         document: { hidden: false, getElementById: () => null }, createImageBitmap: async () => ({ width: 720, height: 1280, close() {} }) });
     const exports = {
@@ -70,6 +71,15 @@ test('actual companion host freezes reference identity, prepares a fresh still a
     assert.equal(submission.body.aspect_ratio, undefined); assert.equal(submission.params.aspect_ratio, '9:16');
     assert.equal(calls.filter(c => c.path.startsWith('/image/')).length, 1);
     assert.equal(calls.find(c => c.path.startsWith('/image/')).body.aspect_ratio, '9:16');
+    videoPrice = 3.38;
+    await assert.rejects(d.prepare(args, c), /ceiling/);
+    db.videoConfig.perJobUSD = 7;
+    assert.equal((await d.prepare(args, core.config(db))).videoUSD, 3.38);
+    assert.equal((await d.refreshQuote(job, core.config(db))).videoUSD, 3.38);
+    assert.equal((await d.videoSubmission(job)).usd, 3.38);
+    videoPrice = 7.01;
+    await assert.rejects(d.prepare(args, core.config(db)), /ceiling/);
+    await assert.rejects(d.videoSubmission(job), /ceiling/);
     job.source.turnId = 'old-turn'; await assert.rejects(d.videoSubmission(job), /own new still/);
     job.source.turnId = job.turn.id; saved.set(job.source.path, new Blob(['tampered'])); await assert.rejects(d.videoSubmission(job), /Starting still changed/);
     context.chatId = 'other'; assert.equal(d.canStart(job), false); context.chatId = 'original'; generating = true; assert.equal(d.canStart(job), false);

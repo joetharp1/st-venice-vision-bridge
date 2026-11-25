@@ -21,7 +21,7 @@ The existing Venice Image Generation API key is reused. It is never stored in th
 | Audio | Ambient; no companion speech or lip-sync |
 | Active jobs | 2 across the ST profile, submissions serialized |
 | Submissions | 6 per local calendar day; 90 per rolling 30 days |
-| Complete job ceiling | US$3 including still and video; unknown price blocks |
+| Complete job ceiling | US$3 initial default, editable up to US$7 including still and video; unknown price blocks |
 | Daily spend | Initial live five-second combined quote × daily count, rounded up to cents |
 | Rolling spend | Initial live five-second combined quote × rolling count, rounded up to cents |
 | Retention | 30 days or 2,048 MB, whichever is reached first; adjustable |
@@ -109,3 +109,7 @@ A single saved `videoConfig.model` now controls manual and companion-requested p
 Starting-image-only compatibility is checked before planning. Native `audio_configurable` and fixed-silent metadata are recognised; fixed-resolution models omit resolution. Quoted jobs freeze model/audio/resolution for every subsequent stage, so changing the shared setting cannot switch an existing job to another provider. Per-job/shared budgets and ambiguous-submission safeguards remain unchanged. Price increases above an explicitly approved manual quote still stop the job.
 
 Checks: 148 automated tests passed (7 existing skips), synthetic Chromium tests cover selecting another model, saving/restoring shared settings, 15-second requests, reference uploads, queueing, recovery, delivery and mobile layout. Planning was validated against all 49 currently compatible active models returned by the account catalogue. No paid model generation was performed. Live endpoint contracts: https://docs.venice.ai/api-reference/endpoint/video/queue and https://docs.venice.ai/api-reference/endpoint/models/list.
+
+## Configurable production quote ceiling · 0.9.1
+
+Production quotes and submission rechecks now use the saved complete-job ceiling, editable up to US$7. The source still remains included in the combined budget. Existing defaults, daily and rolling limits, pending reservations and legacy test-rig limits are preserved. Joe requested a US$7 complete-job ceiling; deployment updates only that saved field, leaving his existing US$7 daily and US$63 rolling limits intact. No paid generation is part of deployment.

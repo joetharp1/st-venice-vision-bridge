@@ -37,7 +37,7 @@ export function createCompanionHost(host) {
         const prompt = String(args.motion || '').trim() + '\nPreserve the starting frame identity, clothing and composition. Introduce no new objects or people. No speech, singing or music; environmental ambience only.';
         const catalogue = await d.catalogue();
         const plan = planVideo(catalogue, c.audio, w * 100, h * 100, prompt, duration, c.resolution || null, c.model);
-        const videoUSD = quoteUsd(await d.quote(plan.params));
+        const videoUSD = quoteUsd(await d.quote(plan.params), c.perJobUSD);
         const refs = Object.fromEntries([avatar, USER_PORTRAIT_KEY].filter(k => own.portraits?.[k]).map(k => [k, own.portraits[k]]));
         return { still: { ...still, recipe: { ...args, avatar, duration }, references: { portraits: refs } }, plan, videoUSD };
     }
@@ -81,7 +81,7 @@ export function createCompanionHost(host) {
         },
         ready: () => availability().ready,
         availability,
-        report: () => JSON.stringify({ ...JSON.parse(baseReport()), companionVideo: '0.9.0', availability: availability() }, null, 2),
+        report: () => JSON.stringify({ ...JSON.parse(baseReport()), companionVideo: '0.9.1', availability: availability() }, null, 2),
         announcement: async job => {
             if (stopped.has(job.id)) return 'abort';
             if (host.isGenerating()) return null;
@@ -133,7 +133,7 @@ export function createCompanionHost(host) {
             if (await digest(blob) !== job.source.sha256) throw new Error('Starting still changed; video submission cancelled.');
             const plan = planVideo(await d.catalogue(), job.mode, job.source.width, job.source.height,
                 job.plan.prompt, job.still.recipe.duration, job.params.resolution, job.model);
-            const usd = quoteUsd(await d.quote(plan.params));
+            const usd = quoteUsd(await d.quote(plan.params), config(await d.read()).perJobUSD);
             const body = { ...plan.params, prompt: plan.prompt, image_url: await dataURL(blob) };
             // The legacy Wan flow inherits its ratio from the still. Other models use advertised ratio controls.
             if (plan.params.model === 'wan-2-7-enhanced-image-to-video') delete body.aspect_ratio;

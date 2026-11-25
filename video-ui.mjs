@@ -51,7 +51,7 @@ export async function mountCompanionVideo(host) {
       <p data-quote>No generation happens when checking prices. Uses this companion’s reference model, 9:16 and the selected default clip length.</p>
       <label>Daily submissions<input class="text_pole" type="number" min="1" max="100" data-field="dailyCount"></label>
       <label>Submissions per rolling 30 days<input class="text_pole" type="number" min="1" max="3000" data-field="monthlyCount"></label>
-      <label>Complete-job ceiling · USD<input class="text_pole" type="number" min="0.01" max="3" step="0.01" data-field="perJobUSD"></label>
+      <label>Complete-job ceiling · USD<input class="text_pole" type="number" min="0.01" max="7" step="0.01" data-field="perJobUSD"></label>
       <label>Daily spending ceiling · USD<input class="text_pole" type="number" min="0.01" step="0.01" data-field="dailyUSD"></label>
       <label>Rolling 30-day spending ceiling · USD<input class="text_pole" type="number" min="0.01" step="0.01" data-field="monthlyUSD"></label>
       <label>Keep generated media for days<input class="text_pole" type="number" min="1" max="30" data-field="retentionDays"></label>

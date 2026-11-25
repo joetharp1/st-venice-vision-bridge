@@ -51,9 +51,10 @@ export function planVideo(catalogue, mode, width, height, prompt, duration = 5, 
     return { params, prompt: prompt.trim(), mode, width, height, audioConfig };
 }
 
-export function quoteUsd(body) {
+export function quoteUsd(body, ceiling = 3) {
     if (typeof body?.quote !== 'number' || !Number.isFinite(body.quote) || body.quote < 0) throw new Error('Price unknown: provider returned no numeric USD quote.');
-    if (body.quote > 3) throw new Error(`Quote ${money(body.quote)} exceeds the US$3 test ceiling.`);
+    if (!Number.isFinite(ceiling) || ceiling <= 0 || ceiling > 7) throw new Error('Video quote ceiling must be a positive amount up to US$7.');
+    if (body.quote > ceiling) throw new Error(`Quote ${money(body.quote)} exceeds the US$${ceiling} video ceiling.`);
     return body.quote;
 }
 

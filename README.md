@@ -1,4 +1,4 @@
-# Venice Image Bridge 0.9.0 — Reference portraits, manual videos and picture albums
+# Venice Image Bridge 0.9.1 — Reference portraits, manual videos and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
 
@@ -6,7 +6,7 @@ A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom Open
 
 Under **Extensions → Venice Image Bridge → Companion video → Shared video model**, refresh the live catalogue, choose a model, default clip length and resolution, and press **Save video model**. This applies to manual clips and all enabled companion video tools. New clips default to **10 seconds**; the menus offer **10–30 seconds** where the selected model supports them. Models limited to shorter clips are omitted. Each job keeps its chosen model, duration, resolution and audio through re-quoting, queueing and recovery.
 
-Only compatible single-starting-image models are listed: text-to-video, multi-reference, transition and video-edit tasks require different inputs and are excluded. Fixed-resolution models omit that parameter; resolution names/casing and duration choices come from Venice. Manual generation shows the live combined still + video quote before spending. Existing spending ceilings are preserved, including the US$3 combined-job maximum. The separate legacy connection-test rig remains a five-second Wan test; it is not the production creator.
+Only compatible single-starting-image models are listed: text-to-video, multi-reference, transition and video-edit tasks require different inputs and are excluded. Fixed-resolution models omit that parameter; resolution names/casing and duration choices come from Venice. Manual generation shows the live combined still + video quote before spending. Saved spending ceilings are preserved. The combined still + video ceiling is editable up to US$7; production price checks use that saved ceiling. The separate legacy connection-test rig remains a five-second Wan test; it is not the production creator.
 
 ## Separate video references (0.8.1)
 
