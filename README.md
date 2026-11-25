@@ -1,6 +1,12 @@
-# Venice Image Bridge 0.8.0 — Reference portraits, manual videos and picture albums
+# Venice Image Bridge 0.8.1 — Reference portraits, manual videos and picture albums
 
 A companion extension for **SillyTavern 1.19.0** and a direct Venice Custom OpenAI-compatible connection.
+
+## Separate video references (0.8.1)
+
+Open **Extensions → Venice Image Bridge → Companion video → Separate video references**. Select **Me** or **Current companion**, choose a PNG/JPEG/WebP file and press **Save video reference**. Your own video reference is shared across chats; companion video references are keyed per character. Saving is free and does not generate a clip. Video uploads do not replace the ordinary image references. The existing reference editing-model configuration is reused.
+
+Manual and companion-requested videos prefer these separate references. Without a separate video reference they use the picture reference; **Use picture reference instead** restores that fallback without deleting the uploaded file. Queued jobs retain their frozen reference snapshot. Video references are excluded from generated-media retention. Uploads are checked for image type, dimensions and the existing 8 MB limit, then verified after server storage.
 
 ## Create a video yourself (0.8.0)
 

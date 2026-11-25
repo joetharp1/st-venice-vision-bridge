@@ -38,7 +38,7 @@ const { chromium } = require(path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MO
    const callbacks={};const c={registerFunctionTool:()=>{},chatId,name1:'Joe',name2:'Ava',characterId:0,characters:[{avatar:'Ava.png'}],chat:data.chat,
      addOneMessage(m){const el=document.createElement('video');el.controls=true;el.preload='metadata';el.src=m.extra.media[0].url;document.getElementById('chat').append(el);},
      async saveChat(){await fetch('/api/chats/save-fixture',{method:'POST',body:JSON.stringify({id:chatId,chat:c.chat})});}};
-   const host={getSettings:()=>ext['st-venice-vision-bridge'],loadReference:async()=>{const blob=await(await fetch('/user/images/still.png')).blob();return await new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(blob);});},bridge:{busy:false,initiationStatus:()=>({ready:true}),withVideoStillLock:fn=>fn()},extension_settings:ext,getContext:()=>c,saveSettings:async()=>{await fetch('/api/settings/save',{method:'POST',body:JSON.stringify({extension_settings:ext})});},getRequestHeaders:()=>({'Content-Type':'application/json'}),getMessageTimeStamp:()=>new Date().toISOString(),isGenerating:()=>false,hasPendingFileAttachment:()=>false,eventSource:{on:(n,f)=>callbacks[n]=f},event_types:{CHAT_CHANGED:'change'},MEDIA_TYPE:{VIDEO:'video',IMAGE:'image'},MEDIA_SOURCE:{GENERATED:'generated'},MEDIA_DISPLAY:{GALLERY:'gallery'}};
+   const host={getSettings:()=>ext['st-venice-vision-bridge'],loadReference:async url=>{const blob=await(await fetch(url)).blob();return await new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(blob);});},bridge:{busy:false,initiationStatus:()=>({ready:true}),withVideoStillLock:fn=>fn()},extension_settings:ext,getContext:()=>c,saveSettings:async()=>{await fetch('/api/settings/save',{method:'POST',body:JSON.stringify({extension_settings:ext})});},getRequestHeaders:()=>({'Content-Type':'application/json'}),getMessageTimeStamp:()=>new Date().toISOString(),isGenerating:()=>false,hasPendingFileAttachment:()=>false,eventSource:{on:(n,f)=>callbacks[n]=f},event_types:{CHAT_CHANGED:'change'},MEDIA_TYPE:{VIDEO:'video',IMAGE:'image'},MEDIA_SOURCE:{GENERATED:'generated'},MEDIA_DISPLAY:{GALLERY:'gallery'}};
    window.rig=await mountCompanionVideo(host);window.host=host;
    </script>`);
   } catch(e){ res.statusCode=500;res.end(e.message);errors.push(e.message); }
@@ -61,6 +61,18 @@ const { chromium } = require(path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MO
   });
   const url=`http://127.0.0.1:${server.address().port}`;
   let page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(url);await page.waitForFunction(()=>window.rig);
+  await page.getByText('Separate video references', {exact:true}).click();
+  for (const subject of ['user','companion']) {
+    await page.locator('[data-vref="subject"]').selectOption(subject);
+    await page.locator('[data-vref="file"]').setInputFiles({name:subject+'-video.png',mimeType:'image/png',buffer:still});
+    await page.locator('[data-vref="save"]').click();
+    await page.waitForFunction(()=>document.querySelector('[data-vref-status]').textContent.includes('Video reference saved'));
+  }
+  assert.equal(stillCount,0);assert.equal(queueCount,0);
+  assert.equal(ext['st-venice-vision-bridge'].portraits['Ava.png'].url,'/user/images/still.png');
+  assert.equal(ext['st-venice-vision-bridge'].portraits.__human_reference__.url,'/user/images/still.png');
+  assert.match(ext['venice-video-rig-v1'].videoReferences['Ava.png'].url,/venice_video_reference_/);
+  await page.reload();await page.waitForFunction(()=>window.rig);
   await page.locator('[data-manual="subject"]').selectOption('together');
   await page.locator('[data-manual="scene"]').fill('Two people in a garden, fully clothed.');
   await page.locator('[data-manual="motion"]').fill('Both wave. The camera stays fixed.');
@@ -84,7 +96,17 @@ const { chromium } = require(path.join(process.env.CODEX_PRIMARY_RUNTIME_NODE_MO
   assert.equal(stillCount,1);assert.equal(queueCount,1);
   const delivered=chats.A.filter(m=>m.extra?.venice_video_rig);
   assert.equal(delivered.length,1);assert.equal(delivered[0].is_system,true);assert.equal(delivered[0].mes,'Your video.');
-  assert.equal(cleanup,1);assert.equal(uploads.length,2);
+  assert.equal(cleanup,1);assert.equal(uploads.length,4);
+  const job=ext['venice-video-rig-v1'].jobs[0];
+  const refs=ext['venice-video-rig-v1'].videoReferences;
+  assert.deepEqual(job.still.urls,[refs.__human_reference__.url,refs['Ava.png'].url]);
+  await page.getByText('Separate video references',{exact:true}).click();
+  await page.locator('[data-vref="clear"]').click();
+  await page.waitForFunction(()=>document.querySelector('[data-vref-status]').textContent.includes('Videos will use'));
+  assert.equal(ext['venice-video-rig-v1'].videoReferences['Ava.png'],undefined);
+  assert.ok(ext['venice-video-rig-v1'].videoReferences.__human_reference__);
+  assert.ok(files.has(job.still.urls[1]));
+  assert.equal(ext['st-venice-vision-bridge'].portraits['Ava.png'].url,'/user/images/still.png');
   const video=page.locator('#chat video');await video.evaluate(v=>v.play());await page.waitForFunction(()=>document.querySelector('#chat video').currentTime>0.1);
   await page.screenshot({path:'/tmp/venice-manual-mobile.png',fullPage:true});
   assert.deepEqual(errors,[]);

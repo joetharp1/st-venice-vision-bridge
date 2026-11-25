@@ -1,7 +1,7 @@
 import { createRigHost, dataURL, digest, localFile } from './video-rig-host.mjs';
 import { planVideo, quoteUsd, RIG_KEY } from './video-rig-core.mjs';
-import { stillPlan, config, findAnnouncement } from './video-core.mjs';
-import { attachPortrait, editedImage, USER_PORTRAIT_KEY } from './portraits.mjs';
+import { stillPlan, config, findAnnouncement, videoPortraits } from './video-core.mjs';
+import { attachPortrait, editedImage, USER_PORTRAIT_KEY, validatePortrait } from './portraits.mjs';
 import { parseModels } from './models.mjs';
 import { characterKey, isVeniceConnection } from './core.mjs';
 
@@ -28,7 +28,7 @@ export function createCompanionHost(host) {
     async function prepare(args, c, frozen) {
         if (typeof args.motion !== 'string' || !args.motion.trim() || args.motion.length > 1000) throw new Error('Motion must contain 1–1000 characters.');
         const models = parseModels(await (await d.api('/models?type=inpaint')).json(), 'inpaint');
-        const own = structuredClone(frozen || host.getSettings()); own.editModels = models;
+        const own = frozen ? structuredClone(frozen) : videoPortraits(host.getSettings(), await d.read()); own.editModels = models;
         const avatar = args.avatar || characterKey(host.getContext());
         const still = stillPlan(own, avatar, host.extension_settings['st-venice-image'] || {}, args);
         const [w, h] = args.aspect_ratio.split(':').map(Number);
@@ -42,12 +42,31 @@ export function createCompanionHost(host) {
     }
     return Object.assign(d, {
         prepare,
+        saveVideoReference: async (subject, file) => {
+            if (!['user', 'companion'].includes(subject)) throw new Error('Choose yourself or the current companion.');
+            const target = d.target(), key = subject === 'user' ? USER_PORTRAIT_KEY : target.avatar;
+            if (!file) throw new Error('Choose a reference image first.');
+            await validatePortrait(file); d.assertTarget(target);
+            const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[file.type];
+            if (!extension) throw new Error('Choose a PNG, JPEG or WebP image.');
+            const id = d.uuid(), asset = await d.saveAsset({ id, target }, file, `venice_video_reference_${id}.${extension}`);
+            d.assertTarget(target);
+            await d.update(db => {
+                d.assertTarget(target);
+                (db.videoReferences ||= {})[key] = { url: asset.path, title: String(file.name || 'Video reference').slice(0,120), sha256: asset.sha256, savedAt: d.now() };
+            });
+        },
+        clearVideoReference: async subject => {
+            if (!['user', 'companion'].includes(subject)) throw new Error('Choose yourself or the current companion.');
+            const target = d.target(), key = subject === 'user' ? USER_PORTRAIT_KEY : target.avatar;
+            await d.update(db => { d.assertTarget(target); if (db.videoReferences) delete db.videoReferences[key]; });
+        },
         refreshQuote: (job, c) => prepare(job.still.recipe, job.requestedBy === 'user' ? { ...c, audio: job.mode, resolution: job.params.resolution } : c, job.still.references),
         referencePreview: subject => {
-            const c = host.getContext(), own = host.getSettings();
+            const c = host.getContext(), db = d.cached(), own = videoPortraits(host.getSettings(), db);
             const refs = [{ key: USER_PORTRAIT_KEY, label: c.name1 || 'You' }, { key: characterKey(c), label: c.name2 || 'Companion' }];
             return refs.filter((_, i) => subject === 'together' || (subject === 'user' ? i === 0 : i === 1))
-                .map(ref => ({ label: ref.label, url: own.portraits?.[ref.key]?.url || null }));
+                .map(ref => ({ label: ref.label, url: own.portraits?.[ref.key]?.url || null, videoOnly: !!db.videoReferences?.[ref.key]?.url }));
         },
         turn: async () => {
             const c = host.getContext(), target = d.target();
@@ -59,7 +78,7 @@ export function createCompanionHost(host) {
         },
         ready: () => availability().ready,
         availability,
-        report: () => JSON.stringify({ ...JSON.parse(baseReport()), companionVideo: '0.8.0', availability: availability() }, null, 2),
+        report: () => JSON.stringify({ ...JSON.parse(baseReport()), companionVideo: '0.8.1', availability: availability() }, null, 2),
         announcement: async job => {
             if (stopped.has(job.id)) return 'abort';
             if (host.isGenerating()) return null;

@@ -285,7 +285,7 @@ export function createRigHost(host) {
             const path = localFile(asset.path);
             if (!path.split('/').pop().startsWith(`venice_video_${job.id}`)) throw new Error('Retention refused a file outside this video job.');
             const persisted = await serverSettings();
-            const refs = Object.values(persisted['st-venice-vision-bridge']?.portraits || {});
+            const refs = [...Object.values(persisted['st-venice-vision-bridge']?.portraits || {}), ...Object.values(persisted[RIG_KEY]?.videoReferences || {})];
             if (refs.some(ref => ref.url === path)) return false;
             // Deletion is idempotent. Never remove a saved reference image.
             const exists = await (await post('/api/files/verify', { urls: [path] })).json();

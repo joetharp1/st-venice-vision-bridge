@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCompanionVideo, VIDEO_DEFAULTS, VIDEO_TOOL, stillPlan, budget, chargedUSD, findAnnouncement, DAY } from '../video-core.mjs';
+import { createCompanionVideo, videoPortraits, VIDEO_DEFAULTS, VIDEO_TOOL, stillPlan, budget, chargedUSD, findAnnouncement, DAY } from '../video-core.mjs';
 import { createVideoRig, planVideo, JOB_TTL, VIDEO_MODEL } from '../video-rig-core.mjs';
 import { portraitPlan, INITIATION_TAIL } from '../portraits.mjs';
 import { createBridge } from '../runtime.mjs';
@@ -199,4 +199,19 @@ test('shared image preparation lock releases even when the video still throws', 
     }), /still failed/);
     assert.equal(bridge.busy, false);
     assert.equal(await bridge.withVideoStillLock(async () => 'ready'), 'ready');
+});
+
+test('separate video references override only video faces, preserving image models, options and other companions', () => {
+    const original = own(), before = structuredClone(original);
+    original.portraits['Eve.png'] = { url: '/user/files/eve.png', model: 'seed' };
+    const db = { videoReferences: { 'Ava.png': { url: '/user/files/ava-video.png' }, __human_reference__: { url: '/user/files/joe-video.png' } } };
+    const effective = videoPortraits(original, db);
+    assert.equal(effective.portraits['Ava.png'].url, '/user/files/ava-video.png');
+    assert.equal(effective.portraits['Eve.png'].url, '/user/files/eve.png');
+    assert.deepEqual(stillPlan(effective, 'Ava.png', {}, { ...args, subject: 'together' }).urls, ['/user/files/joe-video.png', '/user/files/ava-video.png']);
+    assert.equal(effective.portraits['Ava.png'].model, before.portraits['Ava.png'].model);
+    assert.deepEqual(original.portraits['Ava.png'], before.portraits['Ava.png']);
+    assert.deepEqual(original.portraits.__human_reference__, before.portraits.__human_reference__);
+    delete db.videoReferences['Ava.png'];
+    assert.equal(videoPortraits(original, db).portraits['Ava.png'].url, '/user/files/ava.png');
 });

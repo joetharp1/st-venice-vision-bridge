@@ -9,6 +9,14 @@ export const VIDEO_DEFAULTS = Object.freeze({ characters: {}, dailyCount: 6, mon
     audio: 'ambient', resolution: '', silentVerified: false });
 export const config = db => ({ ...VIDEO_DEFAULTS, ...db.videoConfig });
 export const round = x => Math.round(x * 1000000) / 1000000;
+// Video-only faces override URLs on a copy. Ordinary image settings are never mutated.
+export function videoPortraits(own, db) {
+    const copy = clone(own); copy.portraits ||= {};
+    for (const [key, ref] of Object.entries(db.videoReferences || {})) {
+        if (ref?.url) copy.portraits[key] = { ...copy.portraits[key], url: ref.url, title: ref.title };
+    }
+    return copy;
+}
 export function validateConfig(c) {
     for (const [key, min, max] of [['dailyCount', 1, 100], ['monthlyCount', 1, 3000], ['retentionDays', 1, 30], ['storageMB', 32, 8192]]) {
         if (!Number.isInteger(c[key]) || c[key] < min || c[key] > max) throw new Error(`${key} must be a whole number from ${min} to ${max}.`);

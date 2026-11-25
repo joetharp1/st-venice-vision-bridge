@@ -93,3 +93,11 @@ In **Extensions → Venice Image Bridge → Companion video → Create a video y
 The delivered clip is labelled **Your video** as a system media message in the originating chat, without triggering a reply or TTS. No Telegram media integration is present. Keep the originating chat visible and idle for submission; queued provider jobs recover without resubmission after refresh. The manual connection-test rig remains available for animating an already composed uploaded still.
 
 Validation: automated production/core/host/UI tests plus Chromium with synthetic Venice/ST endpoints cover manual quote/submit, two-reference preparation, approved-price bounds, stale quotes/chat changes, duplicate clicks, recovery, video delivery/playback and mobile layouts. No paid provider generation is needed to run these tests.
+
+## Separate video references · 0.8.1
+
+The video panel now has **Separate video references** controls for the user and current companion. References are persisted under `venice-video-rig-v1.videoReferences`, separately from `st-venice-vision-bridge.portraits`. Video planning overlays only the reference URL/title on a cloned portrait configuration; reference model/options remain the person's existing configured values. Ordinary image generation settings are never changed.
+
+Each upload has a unique `venice_video_reference_` filename, verified bytes and a disabled Data Bank registry entry. It is not a generated-video job and is not removed by job retention. Clearing detaches the video override and preserves its stored image; existing jobs continue using their captured references. Current-chat guards prevent a delayed upload from being assigned to a newly selected character. Both user and companion video entry points share this selection logic.
+
+Validation: 146 automated tests passed (7 existing skips). Chromium synthetic end-to-end coverage includes separate uploads for both people, persistence after reload, use of the two uploaded references in a video, restoration of picture-reference fallback, preservation of picture settings and previously used files, inline video playback and mobile layout. No paid Venice generation was performed.

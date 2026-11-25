@@ -19,6 +19,7 @@ test('actual companion host freezes reference identity, prepares a fresh still a
         mainApi: 'openai', chatCompletionSettings: { chat_completion_source: 'custom', custom_url: 'https://api.venice.ai/api/v1' }, chat: [{ is_user: true, mes: 'A clip', send_date: 'now' }] };
     const db = { jobs: [], videoConfig: { ...core.VIDEO_DEFAULTS, characters: { 'Ava.png': true } } };
     const base = {
+        read: async () => db,
         target: () => ({ avatar: 'Ava.png', chatId: context.chatId, name: 'Ava' }), cached: () => db,
         api: async (path, body) => {
             calls.push({ path, body });
@@ -49,13 +50,16 @@ test('actual companion host freezes reference identity, prepares a fresh still a
         isGenerating: () => generating, hasPendingFileAttachment: () => false,
         loadReference: async path => { loads.push(path); return dataURL(png); }, bridge: { busy: false, initiationStatus: () => ({ ready: true }), withVideoStillLock: fn => fn() } });
     const c = core.config(db), args = { subject: 'companion', scene: 'A still beside a window.', motion: 'A blink; camera fixed.', aspect_ratio: '9:16', duration: 5 };
+    db.videoReferences = { 'Ava.png': { url: '/user/files/video-ref.png', title: 'Video only' } };
     const prepared = await d.prepare(args, c); assert.equal(prepared.still.usd, .1); assert.equal(prepared.videoUSD, .55);
+    assert.equal(own.portraits['Ava.png'].url, '/user/files/ref.png');
     own.portraits['Ava.png'].url = '/user/files/different.png';
+    db.videoReferences['Ava.png'].url = '/user/files/new-video-ref.png';
     const job = { id: 'job-1', target: base.target(), turn: await d.turn(), ...prepared, mode: prepared.plan.mode, params: prepared.plan.params };
     db.jobs.push(job);
-    const fresh = await d.refreshQuote(job, c); assert.equal(fresh.still.url, '/user/files/ref.png');
+    const fresh = await d.refreshQuote(job, c); assert.equal(fresh.still.url, '/user/files/video-ref.png');
     job.source = await d.renderStill(job);
-    assert.deepEqual(loads, ['/user/files/ref.png']); assert.equal(own.portraits['Ava.png'].options.aspect_ratio, '1:1');
+    assert.deepEqual(loads, ['/user/files/video-ref.png']); assert.equal(own.portraits['Ava.png'].options.aspect_ratio, '1:1');
     const submission = await d.videoSubmission(job);
     assert.equal(submission.body.image_url, await dataURL(png)); assert.equal(submission.body.audio, true);
     assert.equal(submission.body.aspect_ratio, undefined); assert.equal(submission.params.aspect_ratio, '9:16');

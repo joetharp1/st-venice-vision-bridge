@@ -7,13 +7,23 @@ export async function mountCompanionVideo(host) {
     if (mounted) return mounted;
     const d = createCompanionHost(host), rig = createVideoRig(d), engine = createCompanionVideo(d, rig);
     const root = document.createElement('div'); root.id = 'venice_companion_video';
-    root.innerHTML = `<hr><h4>Companion video · 0.8.0</h4>
-      <p>Reference-based five-second clips, delivered after the chat reply. Your reference and companion references are shared with the image bridge.</p>
+    root.innerHTML = `<hr><h4>Companion video · 0.8.1</h4>
+      <p>Reference-based clips for you and your companions.</p>
+      <details><summary><b>Separate video references</b></summary>
+      <p>Save a different image for videos without changing your picture references. Your video reference is shared across chats; each companion has their own.</p>
+      <label>Reference for<select class="text_pole" data-vref="subject"><option value="companion">Current companion</option><option value="user">Me</option></select></label>
+      <div data-video-reference-preview style="margin:12px 0"></div>
+      <label>Choose video reference<input type="file" data-vref="file" accept="image/png,image/jpeg,image/webp" style="max-width:100%"></label>
+      <button class="menu_button" data-vref="save">Save video reference</button>
+      <button class="menu_button" data-vref="clear">Use picture reference instead</button>
+      <p data-vref-status role="status"></p>
+      <p>PNG, JPEG or WebP, up to 8 MB. Uses the reference image model already configured for this person. Both manual and companion-requested videos use these video references. Existing video jobs keep the references they started with.</p>
+      </details>
       <details open><summary><b>Create a video yourself</b></summary>
-      <p>Use your saved reference portraits to create a new scene, then animate it. Open the companion’s chat to choose them.</p>
+      <p>Use your saved video references to create a new scene, then animate it. Open the companion’s chat to choose them. When no separate video reference is saved, the picture reference is used.</p>
       <label>Who appears?<select class="text_pole" data-manual="subject"><option value="companion">Current companion</option><option value="user">Me</option><option value="together">Me and current companion</option></select></label>
       <div data-references style="display:flex;gap:12px;flex-wrap:wrap;margin:12px 0"></div>
-      <p>Change these images in the bridge’s reference portrait controls above.</p>
+      <p>Change these images under Separate video references above.</p>
       <label>Starting scene<textarea class="text_pole" data-manual="scene" rows="3" maxlength="1200" placeholder="Clothing, pose, setting and lighting…"></textarea></label>
       <label>Movement<textarea class="text_pole" data-manual="motion" rows="3" maxlength="1000" placeholder="What moves, how the camera moves, and how the clip ends…"></textarea></label>
       <label>Shape<select class="text_pole" data-manual="aspect_ratio"><option value="9:16">Portrait · 9:16</option><option value="16:9">Landscape · 16:9</option></select></label>
@@ -64,11 +74,11 @@ export async function mountCompanionVideo(host) {
         $('[data-action="manual-start"]').textContent = 'Generate my video';
         $('[data-manual-status]').textContent = 'Check the price for your current choices.';
     }
-    function renderReferences() {
-        const box = $('[data-references]'); box.replaceChildren();
-        for (const ref of d.referencePreview($('[data-manual="subject"]').value)) {
+    function showReferences(box, subject) {
+        box.replaceChildren();
+        for (const ref of d.referencePreview(subject)) {
             const item = document.createElement('div'), label = document.createElement('div');
-            label.textContent = `${ref.label}${ref.url ? '' : ' · no reference saved'}`;
+            label.textContent = `${ref.label} · ${ref.url ? ref.videoOnly ? 'video reference' : 'picture reference' : 'no reference saved'}`;
             if (ref.url) {
                 const img = document.createElement('img'); img.src = ref.url; img.alt = `${ref.label} reference`;
                 img.style.cssText = 'width:76px;height:76px;object-fit:cover;border-radius:8px'; item.append(img);
@@ -76,6 +86,31 @@ export async function mountCompanionVideo(host) {
             item.append(label); box.append(item);
         }
     }
+    function renderReferences() {
+        showReferences($('[data-references]'), $('[data-manual="subject"]').value);
+        showReferences($('[data-video-reference-preview]'), $('[data-vref="subject"]').value);
+    }
+    $('[data-vref="subject"]').addEventListener('change', () => {
+        $('[data-vref="file"]').value = ''; $('[data-vref-status]').textContent = ''; renderReferences();
+    });
+    function runReference(action) { return async () => {
+        if (working) return; working = true; invalidateManual();
+        for (const k of ['subject', 'file', 'save', 'clear']) $(`[data-vref="${k}"]`).disabled = true;
+        try { await action(); render(); }
+        catch (e) { $('[data-vref-status]').textContent = safeError(e); }
+        finally { working = false; for (const k of ['subject', 'file', 'save', 'clear']) $(`[data-vref="${k}"]`).disabled = false; }
+    }; }
+    $('[data-vref="save"]').onclick = runReference(async () => {
+        const subject = $('[data-vref="subject"]').value, file = $('[data-vref="file"]').files?.[0];
+        $('[data-vref-status]').textContent = 'Saving and verifying your separate video reference…';
+        await d.saveVideoReference(subject, file);
+        $('[data-vref="file"]').value = '';
+        $('[data-vref-status]').textContent = 'Video reference saved. Your picture reference is unchanged.';
+    });
+    $('[data-vref="clear"]').onclick = runReference(async () => {
+        await d.clearVideoReference($('[data-vref="subject"]').value);
+        $('[data-vref-status]').textContent = 'Videos will use the picture reference again. The uploaded file is kept.';
+    });
     manualFields.forEach(k => $(`[data-manual="${k}"]`).addEventListener('input', () => { invalidateManual(); renderReferences(); }));
     root.querySelectorAll('[data-field]').forEach(el => el.addEventListener('change', () => { formDirty = true; }));
     const fields = ['audio', 'resolution', 'dailyCount', 'monthlyCount', 'perJobUSD', 'dailyUSD', 'monthlyUSD', 'retentionDays', 'storageMB'];
@@ -227,7 +262,7 @@ export async function mountCompanionVideo(host) {
         }, formatMessage: () => 'Preparing a video request…',
     });
     host.eventSource.on(host.event_types.GENERATION_STOPPED, () => { d.stop().catch(e => status(safeError(e))); });
-    host.eventSource.on(host.event_types.CHAT_CHANGED, () => { formDirty = false; invalidateManual(); render(true); });
+    host.eventSource.on(host.event_types.CHAT_CHANGED, () => { formDirty = false; invalidateManual(); $('[data-vref="file"]').value = ''; $('[data-vref-status]').textContent = ''; render(true); });
     host.eventSource.on(host.event_types.GENERATION_ENDED, () => { clearTimeout(timer); timer = setTimeout(tick, 1000); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { clearTimeout(timer); timer = setTimeout(tick, 1000); } });
     await d.read(); render(true); status('Ready. Check live prices before enabling your first companion.');
